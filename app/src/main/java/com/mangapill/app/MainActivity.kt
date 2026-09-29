@@ -1,5 +1,6 @@
 package com.mangapill.app
 
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -42,7 +43,7 @@ class MainActivity : ComponentActivity() {
                             HomeScreen(
                                 repository = repository,
                                 onMangaSelect = { mangaId ->
-                                    navController.navigate("manga/$mangaId")
+                                    navController.navigate("manga/${Uri.encode(mangaId)}")
                                 }
                             )
                         }
@@ -57,7 +58,7 @@ class MainActivity : ComponentActivity() {
                                 repository = repository,
                                 onBack = { navController.popBackStack() },
                                 onChapterSelect = { chapterId ->
-                                    navController.navigate("reader/$mangaId/$chapterId")
+                                    navController.navigate("reader/${Uri.encode(mangaId)}/${Uri.encode(chapterId)}")
                                 }
                             )
                         }
