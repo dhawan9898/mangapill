@@ -8,6 +8,11 @@ on:
   pull_request:
     branches: [ "master", "main" ]
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release tag to create/update (e.g. v0.1)'
+        required: true
+        default: 'v0.1'
 
 jobs:
   build:
@@ -57,17 +62,19 @@ jobs:
           path: ./release-apk
 
       - name: Create Release and Upload APK
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+          target_commitish: ${{ github.sha }}
           files: ./release-apk/app-debug.apk
-          name: Mangapill App Release ${{ github.ref_name }}
+          name: Mangapill App Release ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
           draft: false
           prerelease: false
           body: |
             ## Mangapill Native Android App Release
             
             ### Downloadable APK
-            - [Download Mangapill APK](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/app-debug.apk)
+            - [Download Mangapill APK](https://github.com/${{ github.repository }}/releases/download/${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}/app-debug.apk)
             
             ### Features
             - Native Jetpack Compose UI with "Liquid Glass" design language
