@@ -22,23 +22,20 @@ android {
         }
     }
 
-    // Release signing comes from the environment (GitHub secrets in CI). Every release must be signed
-    // with the same key, otherwise Android refuses to install it over the previous version.
-    val releaseKeystore = System.getenv("MANGAPILL_KEYSTORE_FILE")
-    if (releaseKeystore != null) {
-        signingConfigs {
-            create("release") {
-                storeFile = file(releaseKeystore)
-                storePassword = System.getenv("MANGAPILL_KEYSTORE_PASSWORD")
-                keyAlias = System.getenv("MANGAPILL_KEY_ALIAS")
-                keyPassword = System.getenv("MANGAPILL_KEY_PASSWORD")
-            }
+    // All releases are signed with the keystore committed in this (private) repo, so every new APK
+    // installs over the previous one as an update. Env vars can override it.
+    signingConfigs {
+        create("release") {
+            storeFile = file(System.getenv("MANGAPILL_KEYSTORE_FILE") ?: "mangapill-release.jks")
+            storePassword = System.getenv("MANGAPILL_KEYSTORE_PASSWORD") ?: "mangapill-store"
+            keyAlias = System.getenv("MANGAPILL_KEY_ALIAS") ?: "mangapill"
+            keyPassword = System.getenv("MANGAPILL_KEY_PASSWORD") ?: "mangapill-store"
         }
     }
 
     buildTypes {
         release {
-            if (releaseKeystore != null) signingConfig = signingConfigs.getByName("release")
+            signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = false
         }
     }
