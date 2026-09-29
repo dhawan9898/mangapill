@@ -6,24 +6,29 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.mangapill.app.data.model.Manga
+import com.mangapill.app.data.model.SearchFilters
 import com.mangapill.app.data.repository.MangaRepository
+import com.mangapill.app.data.repository.Recommendation
+import com.mangapill.app.data.repository.SourceResults
 import com.mangapill.app.ui.components.friendlyError
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 
 /**
  * Home screen state. It is held above the NavHost so that going into a manga and coming back keeps the
- * query, the selected source, the loaded lists and the scroll position.
+ * query, filters, the selected source, the loaded rows and the scroll position.
  */
 @Stable
 class HomeState(
     private val repository: MangaRepository,
     private val scope: CoroutineScope
 ) {
+    // ---- Inputs ---------------------------------------------------------------------------------
     var query by mutableStateOf("")
         private set
     var type by mutableStateOf<String?>(null)
@@ -32,105 +37,180 @@ class HomeState(
         private set
     var genre by mutableStateOf<String?>(null)
         private set
-    
-    // We can remove the source variable if we no longer want it on the UI
+    /** null = all enabled sources. */
     var source by mutableStateOf<String?>(null)
         private set
+    /** True once the user pressed search / "see all": the suggestion panel closes and the grid takes over. */
+    var submitted by mutableStateOf(false)
+        private set
 
+    // ---- Search ---------------------------------------------------------------------------------
+    var results by mutableStateOf<List<Manga>>(emptyList())
+        private set
+    var searchPending by mutableStateOf(false)
+        private set
+    var searchError by mutableStateOf<String?>(null)
+        private set
+
+    // ---- Dashboard ------------------------------------------------------------------------------
     var trending by mutableStateOf<List<Manga>>(emptyList())
         private set
     var latest by mutableStateOf<List<Manga>>(emptyList())
         private set
-    var results by mutableStateOf<List<Manga>>(emptyList())
+    var hiddenGems by mutableStateOf<List<Manga>>(emptyList())
         private set
-    var loading by mutableStateOf(false)
+    var because by mutableStateOf<Recommendation?>(null)
         private set
-    var error by mutableStateOf<String?>(null)
+    var dashboardLoading by mutableStateOf(false)
+        private set
+    var dashboardError by mutableStateOf<String?>(null)
         private set
 
-    val gridState = LazyGridState()
+    val resultsGrid = LazyGridState()
+    val dashboardGrid = LazyGridState()
 
-    val isSearching: Boolean get() = query.trim().length >= 2 || type != null || status != null || genre != null
+    val filters: SearchFilters get() = SearchFilters(query.trim(), type, genre, status)
+    val activeFilterCount: Int get() = listOfNotNull(type, status, genre).size
+    val isSearching: Boolean get() = query.trim().length >= 2 || filters.hasFilters
 
-    private var job: Job? = null
-    private var requestId = 0
+    private var searchJob: Job? = null
+    private var dashboardJob: Job? = null
     private var started = false
 
     fun start() {
         if (started) return
         started = true
-        load(debounce = false)
+        loadDashboard(force = false)
     }
 
     fun updateQuery(value: String) {
         query = value
-        if (value.trim().length >= 2 || value.isBlank()) load(debounce = true)
+        submitted = false
+        runSearch(debounce = true)
     }
 
-    fun selectType(newType: String?) {
-        if (type == newType) return
-        type = newType
-        load(debounce = false)
+    fun submit() {
+        submitted = true
+        if (query.isNotBlank()) repository.prefs.addRecentSearch(query)
     }
 
-    fun selectStatus(newStatus: String?) {
-        if (status == newStatus) return
-        status = newStatus
-        load(debounce = false)
+    fun searchFor(text: String) {
+        query = text
+        submitted = true
+        repository.prefs.addRecentSearch(text)
+        runSearch(debounce = false)
     }
 
-    fun selectGenre(newGenre: String?) {
-        if (genre == newGenre) return
-        genre = newGenre
-        load(debounce = false)
+    fun selectType(value: String?) { if (type != value) { type = value; runSearch(false) } }
+    fun selectStatus(value: String?) { if (status != value) { status = value; runSearch(false) } }
+    fun selectGenre(value: String?) { if (genre != value) { genre = value; runSearch(false) } }
+
+    fun clearFilters() {
+        if (activeFilterCount == 0) return
+        type = null; status = null; genre = null
+        runSearch(false)
     }
 
     fun selectSource(id: String?) {
         if (id == source) return
         source = id
-        load(debounce = false)
+        loadDashboard(force = false)
+        runSearch(debounce = false)
     }
 
-    fun retry() = load(debounce = false, force = true)
+    /** Called when the user enables/disables sources in Settings. */
+    fun onEnabledSourcesChanged(enabled: Set<String>) {
+        val previous = knownEnabled
+        knownEnabled = enabled
+        if (!started || previous == null || previous == enabled) return
+        if (source != null && source !in enabled) source = null
+        loadDashboard(force = false)
+        runSearch(debounce = false)
+    }
 
-    private fun load(debounce: Boolean, force: Boolean = false) {
-        job?.cancel()
-        val id = ++requestId
-        val q = query.trim()
+    private var recommendationJob: Job? = null
+    private var knownEnabled: Set<String>? = null
+    private var lastHistoryKey: String? = UNSET
+
+    /** Re-computes "Because you read X" when the most recently read title changes. */
+    fun refreshRecommendations(latestHistoryKey: String?) {
+        val previous = lastHistoryKey
+        lastHistoryKey = latestHistoryKey
+        // The first call only records the state; the dashboard load already computes the row.
+        if (!started || previous == UNSET || previous == latestHistoryKey) return
+        recommendationJob?.cancel()
         val src = source
-        val filters = com.mangapill.app.data.model.SearchFilters(query = q, type = type, status = status, genre = genre)
-        
-        job = scope.launch {
-            if (debounce && q.isNotEmpty()) delay(400)
-            loading = true
-            error = null
-            try {
-                if (q.length >= 2 || type != null || status != null || genre != null) {
-                    val found = repository.search(filters, src)
-                    if (id == requestId) results = found
-                } else {
-                    val t = async { runCatching { repository.trending(src, force) } }
-                    val l = async { runCatching { repository.latest(src, force) } }
-                    val tr = t.await()
-                    val lr = l.await()
-                    if (id != requestId) return@launch
-                    trending = tr.getOrDefault(emptyList())
-                    latest = lr.getOrDefault(emptyList())
-                    if (trending.isEmpty() && latest.isEmpty()) {
-                        error = (tr.exceptionOrNull() ?: lr.exceptionOrNull())?.let { friendlyError(it) }
-                            ?: "Nothing to show right now."
-                    }
+        recommendationJob = scope.launch {
+            runCatching { repository.becauseYouRead(src) }.getOrNull()?.let { because = it }
+        }
+    }
+
+    fun retry() {
+        loadDashboard(force = true)
+        runSearch(debounce = false)
+    }
+
+    private fun runSearch(debounce: Boolean) {
+        searchJob?.cancel()
+        if (!isSearching) {
+            results = emptyList()
+            searchPending = false
+            searchError = null
+            return
+        }
+        val f = filters
+        val src = source
+        searchJob = scope.launch {
+            if (debounce) delay(300)
+            searchPending = true
+            searchError = null
+            var first = true
+            collectSafely(repository.searchStream(f, src)) { r ->
+                // Keep the previous results on screen until the new query has something to show.
+                if (r.items.isNotEmpty() || r.done || !first) {
+                    results = r.items
+                    if (r.items.isNotEmpty()) first = false
                 }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                if (id == requestId) {
-                    error = friendlyError(e)
-                    results = emptyList()
-                }
-            } finally {
-                if (id == requestId) loading = false
+                searchPending = !r.done
+                if (r.done && r.items.isEmpty() && r.failures.isNotEmpty()) searchError = r.failures.joinToString("\n")
+            }.onFailure { searchError = friendlyError(it) }
+            searchPending = false
+        }
+    }
+
+    private fun loadDashboard(force: Boolean) {
+        dashboardJob?.cancel()
+        val src = source
+        dashboardJob = scope.launch {
+            dashboardLoading = true
+            dashboardError = null
+            var failures = emptyList<String>()
+            val rows = listOf(
+                launch { collectSafely(repository.trendingStream(src, force)) { trending = it.items; failures = failures + it.failures } },
+                launch { collectSafely(repository.latestStream(src, force)) { latest = it.items; failures = failures + it.failures } }
+            )
+            launch { hiddenGems = runCatching { repository.hiddenGems(src) }.getOrDefault(emptyList()) }
+            launch { because = runCatching { repository.becauseYouRead(src) }.getOrNull() }
+            rows.joinAll()
+            dashboardLoading = false
+            if (trending.isEmpty() && latest.isEmpty()) {
+                dashboardError = failures.distinct().joinToString("\n").ifBlank { "Nothing to show right now." }
             }
         }
+    }
+
+    /** Collects [flow], turning a thrown error into a failed Result instead of crashing the screen. */
+    private suspend fun collectSafely(flow: Flow<SourceResults>, onEach: (SourceResults) -> Unit): Result<Unit> =
+        try {
+            flow.collect { onEach(it) }
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+
+    private companion object {
+        const val UNSET = "\u0000unset"
     }
 }

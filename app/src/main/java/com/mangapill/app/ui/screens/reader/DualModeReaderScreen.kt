@@ -51,6 +51,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.SubcomposeAsyncImage
+import android.content.Context
+import coil.imageLoader
 import coil.request.ImageRequest
 import com.mangapill.app.data.model.Chapter
 import com.mangapill.app.data.model.PageImage
@@ -110,6 +112,26 @@ fun DualModeReaderScreen(
     val index = chapters.indexOfFirst { it.id == chapterId }
     val nextChapter = if (index > 0) chapters[index - 1] else null
     val previousChapter = if (index >= 0 && index < chapters.lastIndex) chapters[index + 1] else null
+
+    val context = LocalContext.current
+
+    // Pre-fetch the next few pages so page turns are instant.
+    LaunchedEffect(pages, currentPage) {
+        val loader = context.imageLoader
+        pages.drop(currentPage).take(PREFETCH_PAGES).forEach { loader.enqueue(pageRequest(context, it)) }
+    }
+
+    // Near the end of the chapter, download the whole next chapter into the disk cache so it
+    // opens instantly and can be read with a poor connection.
+    var nextPrefetched by remember(chapterId) { mutableStateOf(false) }
+    LaunchedEffect(currentPage, nextChapter?.id) {
+        val next = nextChapter ?: return@LaunchedEffect
+        if (nextPrefetched || pages.isEmpty() || currentPage < pages.size - 3) return@LaunchedEffect
+        nextPrefetched = true
+        val nextPages = runCatching { repository.getChapterPages(sourceId, next.id) }.getOrNull() ?: return@LaunchedEffect
+        val loader = context.imageLoader
+        nextPages.forEach { loader.enqueue(pageRequest(context, it)) }
+    }
 
     // Persist reading progress whenever the visible page changes.
     LaunchedEffect(pages, currentPage) {
@@ -253,11 +275,7 @@ fun DualModeReaderScreen(
 private fun PageImageView(page: PageImage, scale: ContentScale, modifier: Modifier, minHeight: Int) {
     val context = LocalContext.current
     var attempt by remember { mutableIntStateOf(0) }
-    val request = remember(page.imageUrl, attempt) {
-        ImageRequest.Builder(context).data(page.imageUrl).apply {
-            page.referer?.let { addHeader("Referer", it) }
-        }.setParameter("retry", attempt).crossfade(true).build()
-    }
+    val request = remember(page.imageUrl, attempt) { pageRequest(context, page, attempt) }
     val sizeModifier = if (minHeight > 0) modifier.height(minHeight.dp) else modifier
 
     SubcomposeAsyncImage(
@@ -297,3 +315,16 @@ private fun ChapterEndCard(next: Chapter?, onOpen: (Chapter) -> Unit) {
         }
     }
 }
+
+private const val PREFETCH_PAGES = 4
+
+private fun pageRequest(context: Context, page: PageImage, attempt: Int = 0): ImageRequest =
+    ImageRequest.Builder(context)
+        .data(page.imageUrl)
+        .apply {
+            page.referer?.let { addHeader("Referer", it) }
+            // A retry must bypass the memory cache entry of the failed attempt.
+            if (attempt > 0) setParameter("retry", attempt)
+        }
+        .crossfade(true)
+        .build()

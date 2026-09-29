@@ -16,14 +16,43 @@ data class Manga(
     val key: String get() = "$sourceId:$id"
 }
 
+/** Filter values: type = manga|manhwa|manhua, status = ongoing|completed|hiatus, genre = a [Genres] slug. */
 data class SearchFilters(
     val query: String = "",
-    val type: String? = null, // e.g. "manga", "manhwa", "manhua"
+    val type: String? = null,
     val genre: String? = null,
-    val status: String? = null // e.g. "ongoing", "completed", "hiatus"
-)
+    val status: String? = null
+) {
+    val hasFilters: Boolean get() = type != null || genre != null || status != null
+}
 
-data class SourceInfo(val id: String, val name: String)
+data class Genre(val slug: String, val name: String)
+
+/** The genres offered in the UI; each source maps them to its own ids. */
+object Genres {
+    val all = listOf(
+        Genre("action", "Action"),
+        Genre("adventure", "Adventure"),
+        Genre("comedy", "Comedy"),
+        Genre("drama", "Drama"),
+        Genre("fantasy", "Fantasy"),
+        Genre("horror", "Horror"),
+        Genre("isekai", "Isekai"),
+        Genre("mystery", "Mystery"),
+        Genre("romance", "Romance"),
+        Genre("slice-of-life", "Slice of Life")
+    )
+
+    fun bySlug(slug: String?): Genre? = all.firstOrNull { it.slug == slug }
+
+    /** Maps a genre name as a source spells it ("Slice of Life", "slice_of_life") to a catalog entry. */
+    fun match(name: String): Genre? {
+        val slug = name.trim().lowercase().replace(Regex("[^a-z]+"), "-").trim('-')
+        return all.firstOrNull { it.slug == slug }
+    }
+}
+
+data class SourceInfo(val id: String, val name: String, val experimental: Boolean = false)
 
 enum class MangaStatus {
     ONGOING,

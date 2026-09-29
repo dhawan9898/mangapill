@@ -4,6 +4,15 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.navigation.NavHostController
@@ -12,9 +21,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import com.mangapill.app.data.local.AppDatabase
 import com.mangapill.app.data.model.Chapter
-import com.mangapill.app.data.repository.MangaRepository
+import com.mangapill.app.data.model.Manga
 import com.mangapill.app.ui.navigation.AdaptiveAppScaffold
 import com.mangapill.app.ui.navigation.NavigationDestination
 import com.mangapill.app.ui.navigation.Routes
@@ -33,24 +41,39 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        val repository = MangaRepository(AppDatabase.getInstance(this))
+        val repository = (application as MangapillApp).repository
 
         setContent {
             MangapillTheme {
                 val navController = rememberNavController()
                 val scope = rememberCoroutineScope()
-                // Lives above the NavHost so query, source and scroll position survive navigation.
+                // Lives above the NavHost so query, filters and scroll position survive navigation.
                 val homeState = remember { HomeState(repository, scope) }
+
+                val openManga: (Manga) -> Unit = { m -> navController.navigate(Routes.manga(m.sourceId, m.id)) }
+                val readChapter: (Manga, Chapter) -> Unit = { m, ch ->
+                    navController.navigate(Routes.reader(m.sourceId, m.id, ch.id, ch.chapterNumber))
+                }
 
                 AdaptiveAppScaffold(navController = navController) {
                     NavHost(
                         navController = navController,
-                        startDestination = NavigationDestination.HOME.route
+                        startDestination = NavigationDestination.HOME.route,
+                        // Tabs cross-fade; pushed screens spring in and scale away.
+                        enterTransition = { fadeIn(tween(220)) + scaleIn(spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow), initialScale = 0.96f) },
+                        exitTransition = { fadeOut(tween(160)) + scaleOut(tween(220), targetScale = 0.98f) },
+                        popEnterTransition = { fadeIn(tween(220)) + scaleIn(tween(260), initialScale = 0.98f) },
+                        popExitTransition = { fadeOut(tween(160)) + scaleOut(spring(stiffness = Spring.StiffnessMediumLow), targetScale = 0.94f) }
                     ) {
                         composable(NavigationDestination.HOME.route) {
                             HomeScreen(
                                 state = homeState,
-                                onMangaSelect = { m -> navController.navigate(Routes.manga(m.sourceId, m.id)) }
+                                repository = repository,
+                                onMangaSelect = openManga,
+                                onReadChapter = readChapter,
+                                onContinue = { e ->
+                                    navController.navigate(Routes.reader(e.manga.sourceId, e.manga.id, e.chapterId, e.chapterNumber))
+                                }
                             )
                         }
 
@@ -59,7 +82,9 @@ class MainActivity : ComponentActivity() {
                             arguments = listOf(
                                 navArgument("src") { type = NavType.StringType; defaultValue = "mangapill" },
                                 navArgument("id") { type = NavType.StringType; defaultValue = "" }
-                            )
+                            ),
+                            enterTransition = { slideInHorizontally(spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow)) { it / 3 } + fadeIn(tween(220)) },
+                            popExitTransition = { slideOutHorizontally(tween(240)) { it / 3 } + fadeOut(tween(200)) }
                         ) { entry ->
                             val src = entry.arguments?.getString("src").orEmpty()
                             val id = entry.arguments?.getString("id").orEmpty()
@@ -99,10 +124,7 @@ class MainActivity : ComponentActivity() {
                         }
 
                         composable(NavigationDestination.BOOKMARKS.route) {
-                            LibraryScreen(
-                                repository = repository,
-                                onMangaSelect = { m -> navController.navigate(Routes.manga(m.sourceId, m.id)) }
-                            )
+                            LibraryScreen(repository = repository, onMangaSelect = openManga)
                         }
 
                         composable(NavigationDestination.HISTORY.route) {
@@ -115,7 +137,7 @@ class MainActivity : ComponentActivity() {
                         }
 
                         composable(NavigationDestination.SETTINGS.route) {
-                            SettingsScreen(sources = repository.sources)
+                            SettingsScreen(repository = repository)
                         }
                     }
                 }

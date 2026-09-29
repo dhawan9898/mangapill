@@ -25,6 +25,7 @@ import com.mangapill.app.data.model.Manga
 import com.mangapill.app.data.repository.MangaRepository
 import com.mangapill.app.ui.components.MangaPosterCard
 import com.mangapill.app.ui.components.StateMessage
+import com.mangapill.app.ui.navigation.bottomContentPadding
 import com.mangapill.app.ui.theme.TextPrimary
 
 @Composable
@@ -36,7 +37,7 @@ fun LibraryScreen(repository: MangaRepository, onMangaSelect: (Manga) -> Unit) {
         Text(
             "Library",
             color = TextPrimary,
-            fontSize = 26.sp,
+            fontSize = 30.sp,
             fontWeight = FontWeight.Black,
             modifier = Modifier.padding(top = 12.dp, bottom = 12.dp)
         )
@@ -52,7 +53,7 @@ fun LibraryScreen(repository: MangaRepository, onMangaSelect: (Manga) -> Unit) {
                 columns = GridCells.Fixed(columns),
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
-                contentPadding = PaddingValues(bottom = 24.dp)
+                contentPadding = PaddingValues(bottom = bottomContentPadding())
             ) {
                 items(library, key = { it.key }) { manga ->
                     MangaPosterCard(manga = manga, onClick = { onMangaSelect(manga) })

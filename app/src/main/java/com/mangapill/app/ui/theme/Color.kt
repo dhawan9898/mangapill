@@ -22,3 +22,7 @@ val BlueStatus = Color(0xFF3B82F6)
 val TextPrimary = Color(0xFFF4F4F5)
 val TextSecondary = Color(0xFFA1A1AA)
 val TextMuted = Color(0xFF71717A)
+
+val CyanAccent = Color(0xFF22D3EE)
+val PinkAccent = Color(0xFFF472B6)
+val GlassDark = Color(0xE00B0B12)

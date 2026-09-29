@@ -60,7 +60,16 @@ import com.mangapill.app.data.model.Chapter
 import com.mangapill.app.data.model.Manga
 import com.mangapill.app.data.model.MangaStatus
 import com.mangapill.app.data.repository.MangaRepository
-import com.mangapill.app.ui.components.CoverImage
+import com.mangapill.app.ui.components.MangaCover
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
+import com.mangapill.app.ui.components.glass.GlassIconButton
+import com.mangapill.app.ui.components.glass.GradientButton
+import com.mangapill.app.ui.components.glass.liquidGlass
+import com.mangapill.app.ui.components.manga.StatusTag
 import com.mangapill.app.ui.components.RatingBadge
 import com.mangapill.app.ui.components.SourceBadge
 import com.mangapill.app.ui.components.StateMessage
@@ -127,7 +136,7 @@ fun MangaDetailsScreen(
         if (newestFirst) filtered else filtered.reversed()
     }
 
-    Box(Modifier.fillMaxSize().background(OledBackground)) {
+    Box(Modifier.fillMaxSize()) {
         val m = manga
         when {
             loading && m == null -> DetailsSkeleton()
@@ -153,14 +162,12 @@ fun MangaDetailsScreen(
                     Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             val target = remember(chapters, progress) { pickStartChapter(chapters, progress?.chapterId) }
-                            Button(
+                            GradientButton(
                                 onClick = { target?.let(onChapterSelect) },
                                 enabled = target != null,
-                                modifier = Modifier.weight(1f).height(48.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = PurpleAccent),
-                                shape = RoundedCornerShape(14.dp)
+                                modifier = Modifier.weight(1f)
                             ) {
-                                Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(20.dp))
+                                Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
                                 Spacer(Modifier.width(6.dp))
                                 Text(
                                     text = when {
@@ -168,22 +175,16 @@ fun MangaDetailsScreen(
                                         progress != null -> "Resume Ch. ${formatChapterNumber(progress!!.chapterNumber)}"
                                         else -> "Start reading"
                                     },
+                                    color = Color.White,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
-                            IconButton(
+                            GlassIconButton(
+                                icon = if (bookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                                contentDescription = if (bookmarked) "Remove from library" else "Add to library",
                                 onClick = { scope.launch { repository.toggleBookmark(m) } },
-                                modifier = Modifier
-                                    .size(48.dp)
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .background(if (bookmarked) PurpleAccent.copy(alpha = 0.25f) else Color.White.copy(alpha = 0.07f))
-                            ) {
-                                Icon(
-                                    imageVector = if (bookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
-                                    contentDescription = if (bookmarked) "Remove from library" else "Add to library",
-                                    tint = if (bookmarked) PurpleAccent else TextSecondary
-                                )
-                            }
+                                active = bookmarked
+                            )
                         }
 
                         if (m.genres.isNotEmpty()) {
@@ -301,29 +302,34 @@ fun MangaDetailsScreen(
         }
 
         // Floating back button, above everything else.
-        IconButton(
+        GlassIconButton(
+            icon = Icons.Default.ArrowBack,
+            contentDescription = "Back",
             onClick = onBack,
-            modifier = Modifier
-                .statusBarsPadding()
-                .padding(8.dp)
-                .size(40.dp)
-                .clip(CircleShape)
-                .background(Color.Black.copy(alpha = 0.55f))
-        ) {
-            Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = TextPrimary)
-        }
+            modifier = Modifier.statusBarsPadding().padding(10.dp)
+        )
     }
 }
 
 @Composable
 private fun Hero(manga: Manga) {
     Box(Modifier.fillMaxWidth().height(340.dp)) {
-        CoverImage(manga.coverImage, null, Modifier.fillMaxSize(), alpha = 0.35f)
+        // Blurred backdrop that dissolves into the aurora background instead of ending in a hard edge.
         Box(
-            Modifier.fillMaxSize().background(
-                Brush.verticalGradient(listOf(Color.Transparent, OledBackground.copy(alpha = 0.6f), OledBackground))
-            )
-        )
+            Modifier
+                .fillMaxSize()
+                .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
+                .drawWithContent {
+                    drawContent()
+                    drawRect(
+                        Brush.verticalGradient(listOf(Color.Black, Color.Black.copy(alpha = 0.6f), Color.Transparent)),
+                        blendMode = BlendMode.DstIn
+                    )
+                }
+        ) {
+            MangaCover(manga, Modifier.fillMaxSize().blur(22.dp), alpha = 0.55f)
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)))
+        }
         Row(
             modifier = Modifier.align(Alignment.BottomStart).padding(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -336,7 +342,7 @@ private fun Hero(manga: Manga) {
                     .clip(RoundedCornerShape(14.dp))
                     .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(14.dp))
             ) {
-                CoverImage(manga.coverImage, manga.title, Modifier.fillMaxSize())
+                MangaCover(manga, Modifier.fillMaxSize())
             }
             Column(Modifier.weight(1f).padding(bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
@@ -350,19 +356,7 @@ private fun Hero(manga: Manga) {
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     SourceBadge(sourceLabel(manga.sourceId))
-                    if (manga.status != MangaStatus.UNKNOWN) {
-                        val color = if (manga.status == MangaStatus.ONGOING) EmeraldStatus else BlueStatus
-                        Text(
-                            text = manga.status.name.lowercase().replaceFirstChar { it.uppercase() },
-                            color = color,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier
-                                .clip(CircleShape)
-                                .background(color.copy(alpha = 0.2f))
-                                .padding(horizontal = 8.dp, vertical = 3.dp)
-                        )
-                    }
+                    StatusTag(manga.status)
                     RatingBadge(manga.rating)
                 }
             }
@@ -377,9 +371,8 @@ private fun ChapterRow(chapter: Chapter, isCurrent: Boolean, isRead: Boolean, on
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
-            .clip(shape)
-            .background(if (isRead) Color.White.copy(alpha = 0.03f) else Color.White.copy(alpha = 0.08f))
-            .then(if (isCurrent) Modifier.border(1.dp, PurpleAccent.copy(alpha = 0.7f), shape) else Modifier)
+            .liquidGlass(shape, if (isRead) 0.02f else 0.06f)
+            .then(if (isCurrent) Modifier.border(1.5.dp, PurpleAccent, shape) else Modifier)
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -422,7 +415,7 @@ private fun DetailsSkeleton() {
     }
 }
 
-private fun pickStartChapter(chapters: List<Chapter>, resumeChapterId: String?): Chapter? {
+fun pickStartChapter(chapters: List<Chapter>, resumeChapterId: String?): Chapter? {
     if (chapters.isEmpty()) return null
     resumeChapterId?.let { id -> chapters.firstOrNull { it.id == id }?.let { return it } }
     // Lists are newest-first, so the first chapter of the story is the last entry.

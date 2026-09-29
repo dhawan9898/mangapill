@@ -4,6 +4,8 @@ import com.mangapill.app.data.model.Chapter
 import com.mangapill.app.data.model.Manga
 import com.mangapill.app.data.model.MangaStatus
 import com.mangapill.app.data.model.PageImage
+import com.mangapill.app.data.model.Genres
+import com.mangapill.app.data.model.SearchFilters
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import java.net.URLEncoder
@@ -20,13 +22,19 @@ class MangapillScraper : BaseScraper() {
     override val sourceName = "Mangapill"
     override val baseUrl = "https://mangapill.com"
 
-    override suspend fun search(filters: com.mangapill.app.data.model.SearchFilters): List<Manga> {
-        if (filters.query.isBlank() && filters.type == null && filters.status == null) return getPopular()
-        var url = "/search?q=${URLEncoder.encode(filters.query, "UTF-8")}"
-        url += "&type=${filters.type ?: ""}"
-        val statusVal = when(filters.status?.lowercase()) { "ongoing" -> "publishing"; "completed" -> "finished"; "hiatus" -> "hiatus"; else -> "" }
-        url += "&status=$statusVal"
-        return parseMangaCards(fetchDocument(url))
+    override val imageReferer = "https://mangapill.com/"
+
+    override fun supports(filters: SearchFilters): Boolean =
+        (filters.type == null || filters.type in TYPES) &&
+            (filters.status == null || filters.status in STATUSES) &&
+            (filters.genre == null || Genres.bySlug(filters.genre) != null)
+
+    override suspend fun search(filters: SearchFilters): List<Manga> {
+        val url = StringBuilder("/search?q=").append(enc(filters.query.trim()))
+            .append("&type=").append(filters.type.orEmpty())
+            .append("&status=").append(enc(STATUSES[filters.status].orEmpty()))
+        Genres.bySlug(filters.genre)?.let { url.append("&genre=").append(enc(it.name)) }
+        return parseMangaCards(fetchDocument(url.toString()))
     }
 
     override suspend fun getPopular(): List<Manga> {
@@ -62,7 +70,7 @@ class MangapillScraper : BaseScraper() {
 
             if (card.cover.isEmpty()) {
                 val img = a.selectFirst("img") ?: soleMangaImage(a, id)
-                if (img != null) card.cover = imageUrl(img)
+                if (img != null) card.cover = img.imageSrc()
             }
 
             val (title, score) = titleCandidate(a)
@@ -105,7 +113,7 @@ class MangapillScraper : BaseScraper() {
 
         val cover = doc.selectFirst("meta[property=og:image]")?.attr("content").orEmpty()
             .ifBlank {
-                doc.select("img").map { imageUrl(it) }
+                doc.select("img").map { it.imageSrc() }
                     .firstOrNull { it.isNotBlank() && !it.endsWith(".svg") && !it.contains("logo", true) }
                     .orEmpty()
             }
@@ -159,25 +167,15 @@ class MangapillScraper : BaseScraper() {
     internal fun parsePages(doc: Document): List<PageImage> {
         var images = doc.select("chapter-page img, img.js-page")
         if (images.isEmpty()) images = doc.select("picture img")
-        var urls = images.map { imageUrl(it) }.filter { it.isNotBlank() }
+        var urls = images.map { it.imageSrc() }.filter { it.isNotBlank() }
         if (urls.isEmpty()) {
-            urls = doc.select("img").map { imageUrl(it) }
+            urls = doc.select("img").map { it.imageSrc() }
                 .filter { it.isNotBlank() && !it.endsWith(".svg") && !it.contains("logo", true) }
         }
         return urls.distinct().mapIndexed { i, url -> PageImage(pageNumber = i + 1, imageUrl = url, referer = "$baseUrl/") }
     }
 
     // ---------------------------------------------------------------------------------------------
-
-    private fun imageUrl(img: Element): String {
-        for (attr in listOf("data-src", "data-lazy-src", "data-original", "src")) {
-            val raw = img.attr(attr).trim()
-            if (raw.isEmpty() || raw.startsWith("data:")) continue
-            val abs = img.absUrl(attr)
-            return abs.ifEmpty { raw }
-        }
-        return ""
-    }
 
     private fun pathOf(href: String): String =
         href.substringBefore('#').substringBefore('?').removePrefix(baseUrl).removePrefix("http://mangapill.com")
@@ -194,11 +192,11 @@ class MangapillScraper : BaseScraper() {
         return path.removePrefix("/chapters/").trim('/').ifBlank { null }
     }
 
-    private fun prettifySlug(id: String): String =
-        id.substringAfterLast('/').split('-').filter { it.isNotBlank() }
-            .joinToString(" ") { w -> w.replaceFirstChar { it.uppercase() } }
+    private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
 
     private companion object {
+        val TYPES = setOf("manga", "manhwa", "manhua")
+        val STATUSES = mapOf("ongoing" to "publishing", "completed" to "finished", "hiatus" to "on hiatus")
         val CHAPTER_IN_TEXT = Regex("Chapter\\s*(\\d+(?:\\.\\d+)?)", RegexOption.IGNORE_CASE)
         val CHAPTER_IN_SLUG = Regex("chapter-(\\d+(?:\\.\\d+)?)", RegexOption.IGNORE_CASE)
     }

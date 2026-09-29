@@ -40,7 +40,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mangapill.app.data.repository.HistoryEntry
 import com.mangapill.app.data.repository.MangaRepository
-import com.mangapill.app.ui.components.CoverImage
+import com.mangapill.app.ui.components.MangaCover
+import com.mangapill.app.ui.components.glass.liquidGlass
+import com.mangapill.app.ui.navigation.bottomContentPadding
 import com.mangapill.app.ui.components.StateMessage
 import com.mangapill.app.ui.components.sourceLabel
 import com.mangapill.app.ui.screens.details.formatChapterNumber
@@ -61,7 +63,7 @@ fun HistoryScreen(repository: MangaRepository, onContinue: (HistoryEntry) -> Uni
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("History", color = TextPrimary, fontSize = 26.sp, fontWeight = FontWeight.Black)
+            Text("History", color = TextPrimary, fontSize = 30.sp, fontWeight = FontWeight.Black)
             if (entries.isNotEmpty()) {
                 IconButton(onClick = { scope.launch { repository.clearHistory() } }) {
                     Icon(Icons.Default.DeleteSweep, contentDescription = "Clear history", tint = TextSecondary)
@@ -79,21 +81,20 @@ fun HistoryScreen(repository: MangaRepository, onContinue: (HistoryEntry) -> Uni
         } else {
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
-                contentPadding = PaddingValues(bottom = 24.dp)
+                contentPadding = PaddingValues(bottom = bottomContentPadding())
             ) {
                 items(entries, key = { it.manga.key }) { entry ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(Color.White.copy(alpha = 0.06f))
+                            .liquidGlass(RoundedCornerShape(18.dp), 0.06f)
                             .clickable { onContinue(entry) }
                             .padding(10.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Box(Modifier.width(56.dp).height(82.dp).clip(RoundedCornerShape(10.dp))) {
-                            CoverImage(entry.manga.coverImage, entry.manga.title, Modifier.fillMaxSize())
+                            MangaCover(entry.manga, Modifier.fillMaxSize())
                         }
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(

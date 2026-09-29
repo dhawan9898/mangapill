@@ -6,26 +6,27 @@ import com.mangapill.app.data.local.MangaEntity
 import com.mangapill.app.data.local.ReadingHistoryEntity
 import com.mangapill.app.data.model.BookmarkStatus
 import com.mangapill.app.data.model.Chapter
+import com.mangapill.app.data.model.Genres
 import com.mangapill.app.data.model.Manga
 import com.mangapill.app.data.model.MangaStatus
 import com.mangapill.app.data.model.PageImage
 import com.mangapill.app.data.model.ReadingHistory
+import com.mangapill.app.data.model.SearchFilters
 import com.mangapill.app.data.model.SourceInfo
+import com.mangapill.app.data.prefs.AppPrefs
 import com.mangapill.app.data.scraper.BaseScraper
-import com.mangapill.app.data.scraper.MangaDexScraper
-import com.mangapill.app.data.scraper.MangapillScraper
-import com.mangapill.app.data.scraper.ComickScraper
-import com.mangapill.app.data.scraper.MangaKakalotScraper
-import com.mangapill.app.data.scraper.AsuraScansScraper
-import com.mangapill.app.data.scraper.FlameComicsScraper
-import com.mangapill.app.data.scraper.ManhuaPlusScraper
-import com.mangapill.app.data.scraper.ReaperScansScraper
+import com.mangapill.app.data.scraper.SourceRegistry
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.last
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeout
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 
@@ -39,111 +40,214 @@ data class HistoryEntry(
     val lastReadAt: Long
 )
 
-class MangaRepository(private val db: AppDatabase) {
+/** Results merged from several sources, emitted every time one more source answers. */
+data class SourceResults(
+    val items: List<Manga>,
+    /** Sources still loading. */
+    val pending: Int,
+    /** "Source: reason" for every source that failed or timed out. */
+    val failures: List<String>
+) {
+    val done: Boolean get() = pending == 0
+}
 
-    private val scrapers: Map<String, BaseScraper> =
-        listOf<BaseScraper>(
-            MangapillScraper(), 
-            MangaDexScraper(), 
-            ComickScraper(), 
-            MangaKakalotScraper(),
-            AsuraScansScraper(),
-            ReaperScansScraper(),
-            FlameComicsScraper(),
-            ManhuaPlusScraper()
-        ).associateBy { it.sourceId }
+data class Recommendation(val seed: Manga, val genre: String, val items: List<Manga>)
 
-    val sources: List<SourceInfo> = scrapers.values.map { SourceInfo(it.sourceId, it.sourceName) }
+class MangaRepository(private val db: AppDatabase, val prefs: AppPrefs) {
+
+    val sources: List<SourceInfo> =
+        SourceRegistry.all.map { SourceInfo(it.sourceId, it.sourceName, it.isExperimental) }
 
     private class CacheEntry(val at: Long, val value: Any)
 
     private val cache = ConcurrentHashMap<String, CacheEntry>()
 
+    /** sourceId -> time until which the source is skipped in "all sources" mode after a failure. */
+    private val cooldown = ConcurrentHashMap<String, Long>()
+
     @Suppress("UNCHECKED_CAST")
-    private suspend fun <T : Any> cached(key: String, ttlMs: Long, force: Boolean = false, loader: suspend () -> T): T {
-        val hit = cache[key]
-        if (!force && hit != null && System.currentTimeMillis() - hit.at < ttlMs) return hit.value as T
-        val value = loader()
+    private fun <T : Any> cacheGet(key: String, ttlMs: Long): T? {
+        val hit = cache[key] ?: return null
+        return if (System.currentTimeMillis() - hit.at < ttlMs) hit.value as T else null
+    }
+
+    private fun cachePut(key: String, value: Any) {
         cache[key] = CacheEntry(System.currentTimeMillis(), value)
-        return value
+    }
+
+    private suspend fun <T : Any> cached(key: String, ttlMs: Long, force: Boolean = false, loader: suspend () -> T): T {
+        if (!force) cacheGet<T>(key, ttlMs)?.let { return it }
+        return loader().also { cachePut(key, it) }
     }
 
     private fun scraper(sourceId: String): BaseScraper =
-        scrapers[sourceId] ?: throw IOException("Unknown source: $sourceId")
+        SourceRegistry[sourceId] ?: throw IOException("Unknown source: $sourceId")
+
+    private fun enabledScrapers(): List<BaseScraper> {
+        val enabled = prefs.enabledSources.value
+        return SourceRegistry.all.filter { it.sourceId in enabled }
+    }
+
+    /** Sources that will be queried for [filters]: one explicit source, or every enabled one that supports them. */
+    fun sourcesFor(filters: SearchFilters, sourceId: String?): List<BaseScraper> {
+        val base = if (sourceId != null) listOfNotNull(SourceRegistry[sourceId]) else enabledScrapers()
+        return base.filter { it.supports(filters) }
+    }
+
+    // --- Multi-source aggregation ---------------------------------------------------------------
 
     /**
-     * Runs [block] against one source, or every source in parallel when [sourceId] is null. A failing
-     * source is tolerated as long as another one answers; if all fail, the errors are reported together.
+     * Queries [targets] concurrently. Each source gets its own time budget, and a partial result is
+     * emitted as soon as any source answers, so one slow or dead site never blocks the screen.
      */
-    private suspend fun gather(sourceId: String?, block: suspend (BaseScraper) -> List<Manga>): List<Manga> = coroutineScope {
-        val targets = if (sourceId == null) scrapers.values.toList() else listOf(scraper(sourceId))
-        val outcomes = targets.map { s ->
-            async {
-                try {
-                    s to Result.success(block(s))
+    private fun gather(
+        cacheKey: String,
+        ttlMs: Long,
+        force: Boolean,
+        targets: List<BaseScraper>,
+        singleSource: Boolean,
+        block: suspend (BaseScraper) -> List<Manga>
+    ): Flow<SourceResults> = channelFlow {
+        if (!force) {
+            cacheGet<List<Manga>>(cacheKey, ttlMs)?.let {
+                send(SourceResults(it, 0, emptyList()))
+                return@channelFlow
+            }
+        }
+        if (targets.isEmpty()) {
+            send(SourceResults(emptyList(), 0, listOf("No enabled source supports this combination of filters")))
+            return@channelFlow
+        }
+
+        val now = System.currentTimeMillis()
+        val healthy = if (singleSource) targets else targets.filter { (cooldown[it.sourceId] ?: 0L) < now }.ifEmpty { targets }
+        val budget = if (singleSource) SINGLE_SOURCE_TIMEOUT_MS else MULTI_SOURCE_TIMEOUT_MS
+
+        val lock = Mutex()
+        val answered = LinkedHashMap<String, List<Manga>>()
+        val failures = ArrayList<String>()
+        var pending = healthy.size
+        send(SourceResults(emptyList(), pending, emptyList()))
+
+        for (source in healthy) {
+            launch {
+                val outcome: Result<List<Manga>> = try {
+                    Result.success(withTimeout(budget) { block(source) })
+                } catch (e: TimeoutCancellationException) {
+                    Result.failure(IOException("timed out"))
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    s to Result.failure<List<Manga>>(e)
+                    Result.failure(e)
+                }
+
+                lock.withLock {
+                    pending--
+                    outcome.onSuccess {
+                        answered[source.sourceId] = it
+                        cooldown.remove(source.sourceId)
+                    }.onFailure {
+                        failures += "${source.sourceName}: ${it.message ?: it.javaClass.simpleName}"
+                        if (!singleSource) cooldown[source.sourceId] = System.currentTimeMillis() + COOLDOWN_MS
+                    }
+                    val merged = interleave(healthy.mapNotNull { answered[it.sourceId] })
+                    send(SourceResults(merged, pending, failures.toList()))
+                    if (pending == 0 && answered.isNotEmpty()) {
+                        cachePut(cacheKey, merged)
+                        persist(merged)
+                    }
                 }
             }
-        }.awaitAll()
-
-        val ok = outcomes.mapNotNull { it.second.getOrNull() }
-        if (ok.isEmpty()) {
-            val message = outcomes.joinToString("\n") { (s, r) -> "${s.sourceName}: ${r.exceptionOrNull()?.message}" }
-            throw IOException(message)
         }
-        interleave(ok)
     }
 
+    /** Round-robin merge so every source is represented near the top; drops cross-source duplicates. */
     private fun interleave(lists: List<List<Manga>>): List<Manga> {
         if (lists.size == 1) return lists[0]
         val out = ArrayList<Manga>()
-        val seenTitles = HashSet<String>()
+        val seen = HashSet<String>()
         var i = 0
         while (lists.any { i < it.size }) {
             for (list in lists) {
                 val m = list.getOrNull(i) ?: continue
-                if (seenTitles.add(m.title.lowercase().filter { it.isLetterOrDigit() })) out.add(m)
+                if (seen.add(normalize(m.title))) out.add(m)
             }
             i++
         }
         return out
     }
 
-    suspend fun search(filters: com.mangapill.app.data.model.SearchFilters, sourceId: String? = null): List<Manga> {
-        val q = filters.query.trim()
-        val cacheKey = "search:$sourceId:${q.lowercase()}:${filters.type}:${filters.status}:${filters.genre}"
-        val results = cached(cacheKey, 5 * 60_000L) {
-            gather(sourceId) { it.search(filters.copy(query = q)) }
+    private fun normalize(title: String) = title.lowercase().filter { it.isLetterOrDigit() }
+
+    private fun modeKey(sourceId: String?) = sourceId ?: ("all[" + prefs.enabledSources.value.sorted().joinToString(",") + "]")
+
+    fun searchStream(filters: SearchFilters, sourceId: String? = null): Flow<SourceResults> {
+        val f = filters.copy(query = filters.query.trim())
+        val key = "search:${modeKey(sourceId)}:${f.query.lowercase()}:${f.type}:${f.status}:${f.genre}"
+        return gather(key, 5 * 60_000L, false, sourcesFor(f, sourceId), sourceId != null) { it.search(f) }
+    }
+
+    fun trendingStream(sourceId: String? = null, force: Boolean = false): Flow<SourceResults> =
+        gather("trending:${modeKey(sourceId)}", 10 * 60_000L, force, sourcesFor(SearchFilters(), sourceId), sourceId != null) {
+            it.getPopular()
         }
-        persist(results)
-        return results
+
+    fun latestStream(sourceId: String? = null, force: Boolean = false): Flow<SourceResults> =
+        gather("latest:${modeKey(sourceId)}", 10 * 60_000L, force, sourcesFor(SearchFilters(), sourceId), sourceId != null) {
+            it.getLatestUpdates()
+        }
+
+    suspend fun hiddenGems(sourceId: String? = null): List<Manga> {
+        val targets = sourcesFor(SearchFilters(), sourceId).filter { it.supportsHiddenGems }
+        if (targets.isEmpty()) return emptyList()
+        return gather("gems:${modeKey(sourceId)}", 30 * 60_000L, false, targets, sourceId != null) { it.getHiddenGems() }
+            .last().items
     }
 
-    suspend fun trending(sourceId: String? = null, force: Boolean = false): List<Manga> {
-        val results = cached("trending:$sourceId", 10 * 60_000L, force) { gather(sourceId) { it.getPopular() } }
-        persist(results)
-        return results
+    /**
+     * "Because you read X": weights genres by how recently they were read, then finds unread titles
+     * in the strongest genre of the most recent title that has genre data.
+     */
+    suspend fun becauseYouRead(sourceId: String? = null): Recommendation? {
+        val rows = db.historyDao().getHistoryRows().first()
+        if (rows.isEmpty()) return null
+
+        val affinity = HashMap<String, Double>()
+        rows.take(20).forEachIndexed { i, row ->
+            genresOf(row.manga).forEach { g -> affinity[g] = (affinity[g] ?: 0.0) + 1.0 / (1 + i) }
+        }
+        val readKeys = rows.map { it.manga.id }.toSet()
+        val readTitles = rows.map { normalize(it.manga.title) }.toSet()
+
+        for (row in rows.take(5)) {
+            val genre = genresOf(row.manga).maxByOrNull { affinity[it] ?: 0.0 } ?: continue
+            val items = searchStream(SearchFilters(genre = genre), sourceId).last().items
+                .filter { it.key !in readKeys && normalize(it.title) !in readTitles }
+            if (items.isNotEmpty()) {
+                return Recommendation(row.manga.toManga(), Genres.bySlug(genre)?.name ?: genre, items.take(15))
+            }
+        }
+        return null
     }
 
-    suspend fun latest(sourceId: String? = null, force: Boolean = false): List<Manga> {
-        val results = cached("latest:$sourceId", 10 * 60_000L, force) { gather(sourceId) { it.getLatestUpdates() } }
-        persist(results)
-        return results
-    }
+    private fun genresOf(entity: MangaEntity): List<String> =
+        entity.genresCsv.split(',').mapNotNull { Genres.match(it)?.slug }.distinct()
+
+    // --- Single-title operations ----------------------------------------------------------------
 
     suspend fun getMangaDetails(sourceId: String, mangaId: String): Manga {
         return try {
             val details = cached("details:$sourceId:$mangaId", 30 * 60_000L) { scraper(sourceId).getMangaDetails(mangaId) }
-            db.mangaDao().insertManga(details.toEntity())
-            details
+            // Keep the cover we already know if the details page did not expose one.
+            val known = db.mangaDao().getMangaById("$sourceId:$mangaId")
+            val merged = if (details.coverImage.isBlank() && known != null) details.copy(coverImage = known.coverImage) else details
+            db.mangaDao().insertManga(merged.toEntity())
+            merged
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             // Offline / blocked: fall back to whatever we cached last time.
-            db.mangaDao().getMangaById(Manga(mangaId, "", "", "", sourceId = sourceId).key)?.toManga() ?: throw e
+            db.mangaDao().getMangaById("$sourceId:$mangaId")?.toManga() ?: throw e
         }
     }
 
@@ -151,7 +255,7 @@ class MangaRepository(private val db: AppDatabase) {
         cached("chapters:$sourceId:$mangaId", 10 * 60_000L, force) { scraper(sourceId).getChapterList(mangaId) }
 
     suspend fun getChapterPages(sourceId: String, chapterId: String): List<PageImage> =
-        cached("pages:$sourceId:$chapterId", 20 * 60_000L) {
+        cached("pages:$sourceId:$chapterId", 30 * 60_000L) {
             val pages = scraper(sourceId).getChapterPages(chapterId)
             if (pages.isEmpty()) throw IOException("This chapter has no readable pages")
             pages
@@ -246,4 +350,10 @@ class MangaRepository(private val db: AppDatabase) {
         sourceId = sourceId,
         latestChapterNumber = latestChapterNumber
     )
+
+    private companion object {
+        const val MULTI_SOURCE_TIMEOUT_MS = 10_000L
+        const val SINGLE_SOURCE_TIMEOUT_MS = 25_000L
+        const val COOLDOWN_MS = 3 * 60_000L
+    }
 }

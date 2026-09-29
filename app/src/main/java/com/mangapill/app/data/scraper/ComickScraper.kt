@@ -1,6 +1,7 @@
 package com.mangapill.app.data.scraper
 
 import com.mangapill.app.data.model.Chapter
+import com.mangapill.app.data.model.Genres
 import com.mangapill.app.data.model.Manga
 import com.mangapill.app.data.model.MangaStatus
 import com.mangapill.app.data.model.PageImage
@@ -11,83 +12,78 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URLEncoder
 
+/** Comick JSON API. Manga and chapter ids are Comick "hid"s. */
 class ComickScraper : BaseScraper() {
     override val sourceId = "comick"
     override val sourceName = "Comick"
     override val baseUrl = "https://api.comick.fun"
-    override val userAgent = "MangapillApp/1.0"
+    override val userAgent = "MangapillApp/1.0 (Android)"
+    override val isExperimental = true
+    override val imageReferer = "https://comick.io/"
+    override val supportsHiddenGems = true
 
-    private val staticBaseUrl = "https://meo.comick.pictures"
+    private val imageHost = "https://meo.comick.pictures"
+
+    override fun supports(filters: SearchFilters): Boolean =
+        (filters.type == null || filters.type in COUNTRIES) &&
+            (filters.status == null || filters.status in STATUSES) &&
+            (filters.genre == null || Genres.bySlug(filters.genre) != null)
 
     override suspend fun search(filters: SearchFilters): List<Manga> {
-        var url = "/v1.0/search?limit=30"
-        if (filters.query.isNotBlank()) url += "&q=${URLEncoder.encode(filters.query, "UTF-8")}"
-        filters.type?.let { type ->
-            val country = when(type) { "manga" -> "jp"; "manhwa" -> "kr"; "manhua" -> "cn"; else -> null }
-            if (country != null) url += "&country=$country"
-        }
-        filters.status?.let { status ->
-            val s = when(status) { "ongoing" -> "1"; "completed" -> "2"; else -> null }
-            if (s != null) url += "&status=$s"
-        }
-        filters.genre?.let { genre ->
-            url += "&genres=${genre.lowercase()}"
-        }
-        val jsonArray = getJsonArray(url)
-        return (0 until jsonArray.length()).map { parseManga(jsonArray.getJSONObject(it)) }
+        val url = StringBuilder("/v1.0/search?limit=30&tachiyomi=true")
+        val q = filters.query.trim()
+        if (q.isNotEmpty()) url.append("&q=").append(URLEncoder.encode(q, "UTF-8")) else url.append("&sort=follow")
+        COUNTRIES[filters.type]?.let { url.append("&country=").append(it) }
+        STATUSES[filters.status]?.let { url.append("&status=").append(it) }
+        filters.genre?.let { url.append("&genres=").append(it) }
+        return parseList(getJsonArray(url.toString()))
     }
 
-    override suspend fun getPopular(): List<Manga> {
-        return search(SearchFilters()).take(20) // Simple fallback for popular since search is sorted by relevance/hot by default
-    }
+    override suspend fun getPopular(): List<Manga> =
+        parseList(getJsonArray("/v1.0/search?sort=follow&limit=20&tachiyomi=true"))
 
-    override suspend fun getLatestUpdates(): List<Manga> {
-        // Comick chapter feed is different, so we will use search sorted by update.
-        val jsonArray = getJsonArray("/v1.0/search?sort=uploaded&limit=30")
-        return (0 until jsonArray.length()).map { parseManga(jsonArray.getJSONObject(it)) }
-    }
+    override suspend fun getLatestUpdates(): List<Manga> =
+        parseList(getJsonArray("/v1.0/search?sort=uploaded&limit=30&tachiyomi=true"))
+
+    override suspend fun getHiddenGems(): List<Manga> =
+        parseList(getJsonArray("/v1.0/search?sort=rating&limit=20&tachiyomi=true"))
 
     override suspend fun getMangaDetails(sourceMangaId: String): Manga {
-        val json = getJsonObject("/comic/$sourceMangaId")
-        val comic = json.getJSONObject("comic")
-        return parseManga(comic, detailed = true)
+        val json = getJsonObject("/comic/$sourceMangaId/?tachiyomi=true")
+        return parseManga(json.getJSONObject("comic"))
     }
 
     override suspend fun getChapterList(sourceMangaId: String): List<Chapter> {
-        val json = getJsonObject("/comic/$sourceMangaId/chapters?limit=500&lang=en")
-        val chapters = json.optJSONArray("chapters") ?: JSONArray()
+        val json = getJsonObject("/comic/$sourceMangaId/chapters?lang=en&limit=99999&tachiyomi=true")
+        val list = json.optJSONArray("chapters") ?: JSONArray()
         val byNumber = LinkedHashMap<String, Chapter>()
-        
-        for (i in 0 until chapters.length()) {
-            val ch = chapters.getJSONObject(i)
-            val chapNumStr = ch.optString("chap").takeIf { it.isNotBlank() } ?: continue
-            val id = ch.getString("hid")
-            if (byNumber.containsKey(chapNumStr)) continue // Skip duplicates
-
-            byNumber[chapNumStr] = Chapter(
-                id = id,
+        for (i in 0 until list.length()) {
+            val ch = list.getJSONObject(i)
+            val hid = ch.optStringOrNull("hid") ?: continue
+            val number = ch.optStringOrNull("chap")
+            val key = number ?: hid
+            if (byNumber.containsKey(key)) continue // several scanlation groups: keep the first
+            byNumber[key] = Chapter(
+                id = hid,
                 mangaId = sourceMangaId,
-                chapterNumber = chapNumStr.toFloatOrNull() ?: 0f,
-                title = ch.optString("title").takeIf { it.isNotBlank() },
-                releaseDate = ch.optString("created_at")?.take(10)
+                chapterNumber = number?.toFloatOrNull() ?: 0f,
+                title = ch.optStringOrNull("title") ?: if (number == null) "Oneshot" else null,
+                releaseDate = ch.optStringOrNull("created_at")?.take(10)
             )
         }
-        return byNumber.values.toList().sortedByDescending { it.chapterNumber }
+        return byNumber.values.sortedByDescending { it.chapterNumber }
     }
 
     override suspend fun getChapterPages(sourceChapterId: String): List<PageImage> {
-        val json = getJsonObject("/chapter/$sourceChapterId")
-        val chapter = json.getJSONObject("chapter")
-        val images = chapter.optJSONArray("images") ?: JSONArray()
-        
-        return (0 until images.length()).map { i ->
+        val chapter = getJsonObject("/chapter/$sourceChapterId/?tachiyomi=true").getJSONObject("chapter")
+        // With tachiyomi=true the API returns ready-made URLs; otherwise only storage keys.
+        val images = chapter.optJSONArray("images")?.takeIf { it.length() > 0 }
+            ?: chapter.optJSONArray("md_images")
+            ?: JSONArray()
+        return (0 until images.length()).mapNotNull { i ->
             val img = images.getJSONObject(i)
-            val url = img.getString("url")
-            PageImage(
-                pageNumber = i + 1,
-                imageUrl = "$url",
-                referer = "https://comick.app/"
-            )
+            val url = img.optStringOrNull("url") ?: img.optStringOrNull("b2key")?.let { "$imageHost/$it" }
+            url?.let { PageImage(pageNumber = i + 1, imageUrl = it, referer = imageReferer) }
         }
     }
 
@@ -103,35 +99,48 @@ class ComickScraper : BaseScraper() {
         return withContext(Dispatchers.Default) { JSONArray(text) }
     }
 
-    private fun parseManga(obj: JSONObject, detailed: Boolean = false): Manga {
-        val slug = obj.getString("slug")
-        val hid = obj.optString("hid", slug)
-        
-        val title = obj.optString("title")
-        val cover = obj.optString("md_covers")?.let { 
-            if (it.isNotBlank()) return@let "$it"
-            null
-        } ?: obj.optJSONArray("md_covers")?.let {
-            if (it.length() > 0) it.getJSONObject(0).optString("b2key") else null
-        } ?: ""
+    internal fun parseList(array: JSONArray): List<Manga> =
+        (0 until array.length()).mapNotNull { runCatching { parseManga(array.getJSONObject(it)) }.getOrNull() }
 
-        val coverUrl = if (cover.isNotBlank() && !cover.startsWith("http")) "$staticBaseUrl/$cover" else cover
-        
-        val synopsis = obj.optString("desc").trim()
-        val statusVal = obj.optInt("status", 1)
+    internal fun parseManga(obj: JSONObject): Manga {
+        val hid = obj.optStringOrNull("hid") ?: obj.getString("slug")
+
+        // md_covers is an array of {b2key, w, h}; cover_url is only present on some endpoints.
+        val cover = obj.optStringOrNull("cover_url")
+            ?: obj.optJSONArray("md_covers")?.let { covers ->
+                (0 until covers.length()).firstNotNullOfOrNull { covers.optJSONObject(it)?.optStringOrNull("b2key") }
+            }?.let { "$imageHost/$it" }
+            ?: ""
+
+        val genres = obj.optJSONArray("md_comic_md_genres")?.let { arr ->
+            (0 until arr.length()).mapNotNull { arr.optJSONObject(it)?.optJSONObject("md_genres")?.optStringOrNull("name") }
+        }.orEmpty()
 
         return Manga(
             id = hid,
-            title = title,
-            slug = slug,
-            coverImage = coverUrl,
-            synopsis = synopsis,
-            status = when(statusVal) {
+            title = obj.optStringOrNull("title") ?: prettifySlug(obj.optString("slug")),
+            slug = obj.optString("slug", hid),
+            coverImage = cover,
+            synopsis = obj.optStringOrNull("desc")?.trim().orEmpty(),
+            status = when (obj.optInt("status", 0)) {
                 1 -> MangaStatus.ONGOING
                 2 -> MangaStatus.COMPLETED
+                4 -> MangaStatus.HIATUS
                 else -> MangaStatus.UNKNOWN
             },
+            rating = obj.optStringOrNull("bayesian_rating")?.toFloatOrNull() ?: 0f,
+            genres = genres,
             sourceId = sourceId
         )
+    }
+
+    private fun JSONObject.optStringOrNull(name: String): String? {
+        if (!has(name) || isNull(name)) return null
+        return optString(name).takeIf { it.isNotBlank() }
+    }
+
+    private companion object {
+        val COUNTRIES = mapOf("manga" to "jp", "manhwa" to "kr", "manhua" to "cn")
+        val STATUSES = mapOf("ongoing" to "1", "completed" to "2", "hiatus" to "4")
     }
 }

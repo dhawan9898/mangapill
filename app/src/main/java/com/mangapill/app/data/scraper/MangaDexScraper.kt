@@ -4,6 +4,7 @@ import com.mangapill.app.data.model.Chapter
 import com.mangapill.app.data.model.Manga
 import com.mangapill.app.data.model.MangaStatus
 import com.mangapill.app.data.model.PageImage
+import com.mangapill.app.data.model.SearchFilters
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -21,16 +22,26 @@ class MangaDexScraper : BaseScraper() {
     private val listFilters = "includes[]=cover_art&contentRating[]=safe&contentRating[]=suggestive" +
         "&availableTranslatedLanguage[]=en&hasAvailableChapters=true"
 
-    override suspend fun search(filters: com.mangapill.app.data.model.SearchFilters): List<Manga> {
-        var url = "/manga?limit=30&order[relevance]=desc&$listFilters"
-        if (filters.query.isNotBlank()) url += "&title=${URLEncoder.encode(filters.query, "UTF-8")}"
-        filters.type?.let { type ->
-            val lang = when(type) { "manga" -> "ja"; "manhwa" -> "ko"; "manhua" -> "zh"; else -> null }
-            if (lang != null) url += "&originalLanguage[]=$lang"
+    override val imageReferer: String? = null
+    override val supportsHiddenGems = true
+
+    override fun supports(filters: SearchFilters): Boolean =
+        (filters.type == null || filters.type in LANGUAGES) &&
+            (filters.status == null || filters.status in setOf("ongoing", "completed", "hiatus")) &&
+            (filters.genre == null || filters.genre in TAGS)
+
+    override suspend fun search(filters: SearchFilters): List<Manga> {
+        val q = filters.query.trim()
+        val url = StringBuilder("/manga?limit=30&$listFilters")
+        if (q.isNotEmpty()) {
+            url.append("&title=").append(URLEncoder.encode(q, "UTF-8")).append("&order[relevance]=desc")
+        } else {
+            url.append("&order[followedCount]=desc")
         }
-        filters.status?.let { status -> url += "&status[]=${status.lowercase()}" }
-        // Note: MangaDex genre requires tag UUIDs, omitted for simplicity
-        return parseMangaList(getJson(url))
+        LANGUAGES[filters.type]?.let { url.append("&originalLanguage[]=").append(it) }
+        filters.status?.let { url.append("&status[]=").append(it) }
+        TAGS[filters.genre]?.let { url.append("&includedTags[]=").append(it) }
+        return parseMangaList(getJson(url.toString()))
     }
 
     override suspend fun getPopular(): List<Manga> =
@@ -38,6 +49,13 @@ class MangaDexScraper : BaseScraper() {
 
     override suspend fun getLatestUpdates(): List<Manga> =
         parseMangaList(getJson("/manga?limit=30&order[latestUploadedChapter]=desc&$listFilters"))
+
+    /** Best-rated titles created in the last two years: good, but not yet on everyone's list. */
+    override suspend fun getHiddenGems(): List<Manga> {
+        val since = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US)
+            .format(java.util.Date(System.currentTimeMillis() - 2L * 365 * 24 * 3600 * 1000))
+        return parseMangaList(getJson("/manga?limit=20&order[rating]=desc&createdAtSince=$since&$listFilters"))
+    }
 
     override suspend fun getMangaDetails(sourceMangaId: String): Manga {
         val json = getJson("/manga/$sourceMangaId?includes[]=cover_art")
@@ -157,5 +175,23 @@ class MangaDexScraper : BaseScraper() {
     private fun JSONObject.optStringOrNull(name: String): String? {
         if (isNull(name)) return null
         return optString(name).takeIf { it.isNotBlank() }
+    }
+
+    private companion object {
+        val LANGUAGES = mapOf("manga" to "ja", "manhwa" to "ko", "manhua" to "zh")
+
+        /** MangaDex tag ids for [com.mangapill.app.data.model.Genres]. */
+        val TAGS = mapOf(
+            "action" to "391b0423-d847-456f-aff0-8b0cfc03066b",
+            "adventure" to "87cc87cd-a395-47af-b27a-93258283bbc6",
+            "comedy" to "4d32cc48-9f00-4cca-9b5a-a839f0764984",
+            "drama" to "b9af3a63-f058-46de-a9a0-e0c13906197a",
+            "fantasy" to "cdc58593-87dd-415e-bbc0-2ec27bf404cc",
+            "horror" to "cdad7e68-1419-41dd-bdce-27753074a640",
+            "isekai" to "ace04997-f6bd-436e-b261-779182193d3d",
+            "mystery" to "ee968100-4191-4968-93d3-f82d72be7e46",
+            "romance" to "423e2eae-a7a2-4a8b-ac03-a8351462d71d",
+            "slice-of-life" to "e5301a23-ebd9-49dd-a0cb-2add944c7fe9"
+        )
     }
 }
