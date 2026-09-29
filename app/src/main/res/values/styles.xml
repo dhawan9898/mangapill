@@ -3,5 +3,6 @@
     <style name="Theme.Mangapill" parent="android:Theme.Material.NoActionBar">
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowBackground">#FF050508</item>
     </style>
 </resources>

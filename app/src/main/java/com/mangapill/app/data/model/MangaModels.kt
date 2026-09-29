@@ -11,7 +11,12 @@ data class Manga(
     val genres: List<String> = emptyList(),
     val sourceId: String = "mangapill",
     val latestChapterNumber: Float = 0f
-)
+) {
+    /** Globally unique key (ids are only unique within a source). Used for DB rows. */
+    val key: String get() = "$sourceId:$id"
+}
+
+data class SourceInfo(val id: String, val name: String)
 
 enum class MangaStatus {
     ONGOING,

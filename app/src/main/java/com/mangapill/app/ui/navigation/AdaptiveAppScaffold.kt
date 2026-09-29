@@ -1,8 +1,10 @@
 package com.mangapill.app.ui.navigation
 
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -33,6 +35,16 @@ import com.mangapill.app.ui.theme.OledSurface
 import com.mangapill.app.ui.theme.PurpleAccent
 import com.mangapill.app.ui.theme.TextMuted
 import com.mangapill.app.ui.theme.TextPrimary
+
+object Routes {
+    const val MANGA = "manga?src={src}&id={id}"
+    const val READER = "reader?src={src}&manga={manga}&chapter={chapter}&num={num}"
+
+    fun manga(src: String, id: String) = "manga?src=${Uri.encode(src)}&id=${Uri.encode(id)}"
+
+    fun reader(src: String, manga: String, chapter: String, num: Float) =
+        "reader?src=${Uri.encode(src)}&manga=${Uri.encode(manga)}&chapter=${Uri.encode(chapter)}&num=$num"
+}
 
 enum class NavigationDestination(val route: String, val label: String, val icon: ImageVector) {
     HOME("home", "Home", Icons.Default.Home),
@@ -121,7 +133,9 @@ fun AdaptiveAppScaffold(
                     }
                 }
             },
-            containerColor = OledBackground
+            containerColor = OledBackground,
+            // Screens handle the status bar themselves; the bottom bar handles the navigation bar.
+            contentWindowInsets = WindowInsets(0.dp, 0.dp, 0.dp, 0.dp)
         ) { paddingValues ->
             Box(modifier = Modifier.padding(paddingValues)) {
                 content()

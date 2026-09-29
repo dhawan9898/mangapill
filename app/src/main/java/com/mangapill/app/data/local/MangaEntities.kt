@@ -1,5 +1,6 @@
 package com.mangapill.app.data.local
 
+import androidx.room.Embedded
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import androidx.room.TypeConverter
@@ -46,6 +47,16 @@ data class BookmarkEntity(
     @PrimaryKey val mangaId: String,
     val status: String,
     val addedAt: Long
+)
+
+/** A reading-history row joined with the manga it belongs to. */
+data class HistoryRow(
+    @Embedded val manga: MangaEntity,
+    val chapterId: String,
+    val chapterNumber: Float,
+    val lastReadPage: Int,
+    val scrollPercentage: Float,
+    val lastReadAt: Long
 )
 
 class DatabaseConverters {

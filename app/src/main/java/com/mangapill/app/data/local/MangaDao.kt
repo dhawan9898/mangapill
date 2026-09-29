@@ -29,8 +29,18 @@ interface HistoryDao {
     @Query("SELECT * FROM reading_history WHERE mangaId = :mangaId")
     fun getHistoryForManga(mangaId: String): Flow<ReadingHistoryEntity?>
 
-    @Query("SELECT * FROM reading_history ORDER BY lastReadAt DESC")
-    fun getAllHistory(): Flow<List<ReadingHistoryEntity>>
+    @Query("SELECT * FROM reading_history WHERE mangaId = :mangaId")
+    suspend fun getHistoryOnce(mangaId: String): ReadingHistoryEntity?
+
+    @Query(
+        "SELECT m.*, h.chapterId AS chapterId, h.chapterNumber AS chapterNumber, " +
+            "h.lastReadPage AS lastReadPage, h.scrollPercentage AS scrollPercentage, h.lastReadAt AS lastReadAt " +
+            "FROM reading_history h INNER JOIN mangas m ON m.id = h.mangaId ORDER BY h.lastReadAt DESC"
+    )
+    fun getHistoryRows(): Flow<List<HistoryRow>>
+
+    @Query("DELETE FROM reading_history")
+    suspend fun clearHistory()
 }
 
 @Dao
@@ -44,6 +54,9 @@ interface BookmarkDao {
     @Query("SELECT * FROM bookmarks WHERE mangaId = :mangaId")
     fun getBookmark(mangaId: String): Flow<BookmarkEntity?>
 
-    @Query("SELECT * FROM bookmarks ORDER BY addedAt DESC")
-    fun getAllBookmarks(): Flow<List<BookmarkEntity>>
+    @Query("SELECT * FROM bookmarks WHERE mangaId = :mangaId")
+    suspend fun getBookmarkOnce(mangaId: String): BookmarkEntity?
+
+    @Query("SELECT m.* FROM mangas m INNER JOIN bookmarks b ON m.id = b.mangaId ORDER BY b.addedAt DESC")
+    fun getBookmarkedMangas(): Flow<List<MangaEntity>>
 }
