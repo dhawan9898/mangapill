@@ -72,6 +72,28 @@ import com.mangapill.app.ui.navigation.bottomContentPadding
 import com.mangapill.app.ui.theme.PurpleAccent
 import com.mangapill.app.ui.theme.TextMuted
 
+/** Dimming scrim plus the suggestion panel dropping down from the search bar. */
+@Composable
+private fun SuggestionsOverlay(visible: Boolean, onDismiss: () -> Unit, panel: @Composable () -> Unit) {
+    Box(Modifier.fillMaxSize()) {
+        AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut()) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(Color(0xA6000000))
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onDismiss)
+            )
+        }
+        AnimatedVisibility(
+            visible = visible,
+            enter = fadeIn() + expandVertically(spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow), expandFrom = Alignment.Top),
+            exit = fadeOut() + shrinkVertically(shrinkTowards = Alignment.Top)
+        ) {
+            panel()
+        }
+    }
+}
+
 private val FullSpan: LazyGridItemSpanScope.() -> GridItemSpan = { GridItemSpan(maxLineSpan) }
 
 @Composable
@@ -145,21 +167,7 @@ fun HomeScreen(
             }
 
             val showSuggestions = searchFocused && !state.submitted && (state.query.isNotBlank() || recents.isNotEmpty())
-            AnimatedVisibility(visible = showSuggestions, enter = fadeIn(), exit = fadeOut()) {
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .background(Color(0xA6000000))
-                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                            focusManager.clearFocus()
-                        }
-                )
-            }
-            AnimatedVisibility(
-                visible = showSuggestions,
-                enter = fadeIn() + expandVertically(spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow), expandFrom = Alignment.Top),
-                exit = fadeOut() + shrinkVertically(shrinkTowards = Alignment.Top)
-            ) {
+            SuggestionsOverlay(visible = showSuggestions, onDismiss = { focusManager.clearFocus() }) {
                 SuggestionsPanel(
                     query = state.query,
                     results = state.results,
