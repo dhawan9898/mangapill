@@ -12,8 +12,9 @@ android {
         applicationId = "com.mangapill.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        // CI passes -PversionCode / -PversionName (derived from the release tag) so every release upgrades the last.
+        versionCode = (project.findProperty("versionCode") as String?)?.toInt() ?: 1
+        versionName = (project.findProperty("versionName") as String?) ?: "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -21,13 +22,24 @@ android {
         }
     }
 
+    // Release signing comes from the environment (GitHub secrets in CI). Every release must be signed
+    // with the same key, otherwise Android refuses to install it over the previous version.
+    val releaseKeystore = System.getenv("MANGAPILL_KEYSTORE_FILE")
+    if (releaseKeystore != null) {
+        signingConfigs {
+            create("release") {
+                storeFile = file(releaseKeystore)
+                storePassword = System.getenv("MANGAPILL_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("MANGAPILL_KEY_ALIAS")
+                keyPassword = System.getenv("MANGAPILL_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            if (releaseKeystore != null) signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = false
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
         }
     }
     compileOptions {

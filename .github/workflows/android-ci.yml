@@ -2,26 +2,32 @@ name: Android CI/CD - Build & Release APK
 
 on:
   push:
-    branches: [ "master", "main" ]
-    tags:
-      - 'v*'
+    branches: [ "main" ]
   pull_request:
-    branches: [ "master", "main" ]
+    branches: [ "main" ]
   workflow_dispatch:
-    inputs:
-      release_tag:
-        description: 'Release tag to create/update (e.g. v0.1)'
-        required: true
-        default: 'v0.1'
+
+# One run at a time per branch so release version numbers never collide.
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  IS_RELEASE: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
 
 jobs:
   build:
-    name: Build Android APK
+    name: Build & Release
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -31,56 +37,77 @@ jobs:
           cache: 'gradle'
 
       - name: Make Gradle Wrapper Executable
-        run: chmod +x gradlew || true
+        run: chmod +x gradlew
 
-      - name: Build Debug APK
+      # ---- Pull requests: just prove it compiles ------------------------------------------------
+      - name: Build debug APK (PR check)
+        if: env.IS_RELEASE != 'true'
         run: ./gradlew assembleDebug --stacktrace
 
-      - name: Upload APK Artifact
+      # ---- Merges to main: signed, versioned release --------------------------------------------
+      - name: Compute next version (v1.0.x)
+        if: env.IS_RELEASE == 'true'
+        id: version
+        run: |
+          git fetch --tags --force
+          LAST=$(git tag -l 'v1.0.*' | sed 's/^v1\.0\.//' | grep -E '^[0-9]+$' | sort -n | tail -1 || true)
+          NEXT=$(( ${LAST:--1} + 1 ))
+          echo "name=1.0.$NEXT" >> "$GITHUB_OUTPUT"
+          echo "tag=v1.0.$NEXT" >> "$GITHUB_OUTPUT"
+          # Must strictly increase for Android to accept the APK as an update.
+          echo "code=$(( 10000 + NEXT ))" >> "$GITHUB_OUTPUT"
+
+      - name: Decode signing key
+        if: env.IS_RELEASE == 'true'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.MANGAPILL_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.MANGAPILL_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.MANGAPILL_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.MANGAPILL_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
+            echo "::error::Signing secrets are missing. Add MANGAPILL_KEYSTORE_BASE64, MANGAPILL_KEYSTORE_PASSWORD, MANGAPILL_KEY_ALIAS and MANGAPILL_KEY_PASSWORD under Settings > Secrets and variables > Actions. Without one fixed key, releases cannot update an installed app."
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          echo "MANGAPILL_KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+          echo "MANGAPILL_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "MANGAPILL_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "MANGAPILL_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+
+      - name: Build signed release APK
+        if: env.IS_RELEASE == 'true'
+        run: >
+          ./gradlew assembleRelease --stacktrace
+          -PversionName=${{ steps.version.outputs.name }}
+          -PversionCode=${{ steps.version.outputs.code }}
+
+      - name: Name APK
+        if: env.IS_RELEASE == 'true'
+        run: cp app/build/outputs/apk/release/app-release.apk "Mangapill-${{ steps.version.outputs.tag }}.apk"
+
+      - name: Upload APK artifact
+        if: env.IS_RELEASE == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: mangapill-app-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: mangapill-${{ steps.version.outputs.tag }}
+          path: Mangapill-${{ steps.version.outputs.tag }}.apk
           if-no-files-found: error
 
-  release:
-    name: Create GitHub Release
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Download Build Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: mangapill-app-debug
-          path: ./release-apk
-
-      - name: Create Release and Upload APK
+      - name: Create GitHub Release
+        if: env.IS_RELEASE == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+          tag_name: ${{ steps.version.outputs.tag }}
           target_commitish: ${{ github.sha }}
-          files: ./release-apk/app-debug.apk
-          name: Mangapill App Release ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
-          draft: false
-          prerelease: false
+          name: Mangapill ${{ steps.version.outputs.tag }}
+          files: Mangapill-${{ steps.version.outputs.tag }}.apk
+          generate_release_notes: true
+          make_latest: true
           body: |
-            ## Mangapill Native Android App Release
-            
-            ### Downloadable APK
-            - [Download Mangapill APK](https://github.com/${{ github.repository }}/releases/download/${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}/app-debug.apk)
-            
-            ### Features
-            - Native Jetpack Compose UI with "Liquid Glass" design language
-            - Phone and Tablet adaptive navigation (BottomBar / NavigationRail)
-            - OkHttp + JSoup Scraping Engine
-            - Room Database offline caching and reading progress synchronization
-            - Webtoon vertical continuous scroll & Horizontal manga page-flip modes
+            ## Mangapill ${{ steps.version.outputs.tag }}
+
+            Download **Mangapill-${{ steps.version.outputs.tag }}.apk** below and install it over your existing app to update.
+            All releases are signed with the same key, so your library and history are kept.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
