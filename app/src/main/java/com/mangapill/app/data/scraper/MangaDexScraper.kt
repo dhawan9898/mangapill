@@ -21,8 +21,17 @@ class MangaDexScraper : BaseScraper() {
     private val listFilters = "includes[]=cover_art&contentRating[]=safe&contentRating[]=suggestive" +
         "&availableTranslatedLanguage[]=en&hasAvailableChapters=true"
 
-    override suspend fun search(query: String): List<Manga> =
-        parseMangaList(getJson("/manga?limit=30&title=${URLEncoder.encode(query, "UTF-8")}&order[relevance]=desc&$listFilters"))
+    override suspend fun search(filters: com.mangapill.app.data.model.SearchFilters): List<Manga> {
+        var url = "/manga?limit=30&order[relevance]=desc&$listFilters"
+        if (filters.query.isNotBlank()) url += "&title=${URLEncoder.encode(filters.query, "UTF-8")}"
+        filters.type?.let { type ->
+            val lang = when(type) { "manga" -> "ja"; "manhwa" -> "ko"; "manhua" -> "zh"; else -> null }
+            if (lang != null) url += "&originalLanguage[]=$lang"
+        }
+        filters.status?.let { status -> url += "&status[]=${status.lowercase()}" }
+        // Note: MangaDex genre requires tag UUIDs, omitted for simplicity
+        return parseMangaList(getJson(url))
+    }
 
     override suspend fun getPopular(): List<Manga> =
         parseMangaList(getJson("/manga?limit=20&order[followedCount]=desc&$listFilters"))

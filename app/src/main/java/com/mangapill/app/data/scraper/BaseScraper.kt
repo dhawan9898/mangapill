@@ -113,7 +113,7 @@ abstract class BaseScraper {
         }
     }
 
-    abstract suspend fun search(query: String): List<Manga>
+    abstract suspend fun search(filters: com.mangapill.app.data.model.SearchFilters): List<Manga>
     abstract suspend fun getPopular(): List<Manga>
     abstract suspend fun getLatestUpdates(): List<Manga>
     abstract suspend fun getMangaDetails(sourceMangaId: String): Manga

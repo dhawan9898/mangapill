@@ -62,7 +62,6 @@ import com.mangapill.app.ui.theme.TextSecondary
 @Composable
 fun HomeScreen(
     state: HomeState,
-    sources: List<SourceInfo>,
     onMangaSelect: (Manga) -> Unit
 ) {
     LaunchedEffect(Unit) { state.start() }
@@ -114,10 +113,33 @@ fun HomeScreen(
 
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            contentPadding = PaddingValues(vertical = 10.dp)
+            contentPadding = PaddingValues(bottom = 6.dp)
         ) {
-            item { SourceChip("All sources", state.source == null) { state.selectSource(null) } }
-            items(sources) { s -> SourceChip(s.name, state.source == s.id) { state.selectSource(s.id) } }
+            item { CustomFilterChip("All Types", state.type == null) { state.selectType(null) } }
+            item { CustomFilterChip("Manga", state.type == "manga") { state.selectType("manga") } }
+            item { CustomFilterChip("Manhwa", state.type == "manhwa") { state.selectType("manhwa") } }
+            item { CustomFilterChip("Manhua", state.type == "manhua") { state.selectType("manhua") } }
+        }
+        
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(bottom = 6.dp)
+        ) {
+            item { CustomFilterChip("All Status", state.status == null) { state.selectStatus(null) } }
+            item { CustomFilterChip("Ongoing", state.status == "ongoing") { state.selectStatus("ongoing") } }
+            item { CustomFilterChip("Completed", state.status == "completed") { state.selectStatus("completed") } }
+            item { CustomFilterChip("Hiatus", state.status == "hiatus") { state.selectStatus("hiatus") } }
+        }
+
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(bottom = 12.dp)
+        ) {
+            item { CustomFilterChip("All Genres", state.genre == null) { state.selectGenre(null) } }
+            item { CustomFilterChip("Action", state.genre == "action") { state.selectGenre("action") } }
+            item { CustomFilterChip("Romance", state.genre == "romance") { state.selectGenre("romance") } }
+            item { CustomFilterChip("Fantasy", state.genre == "fantasy") { state.selectGenre("fantasy") } }
+            item { CustomFilterChip("Comedy", state.genre == "comedy") { state.selectGenre("comedy") } }
         }
 
         if (state.loading) {
@@ -206,8 +228,8 @@ private fun SectionTitle(text: String) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SourceChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    FilterChip(
+private fun CustomFilterChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    androidx.compose.material3.FilterChip(
         selected = selected,
         onClick = onClick,
         label = { Text(label, fontSize = 12.sp, fontWeight = FontWeight.SemiBold) },

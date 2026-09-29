@@ -14,6 +14,12 @@ import com.mangapill.app.data.model.SourceInfo
 import com.mangapill.app.data.scraper.BaseScraper
 import com.mangapill.app.data.scraper.MangaDexScraper
 import com.mangapill.app.data.scraper.MangapillScraper
+import com.mangapill.app.data.scraper.ComickScraper
+import com.mangapill.app.data.scraper.MangaKakalotScraper
+import com.mangapill.app.data.scraper.AsuraScansScraper
+import com.mangapill.app.data.scraper.FlameComicsScraper
+import com.mangapill.app.data.scraper.ManhuaPlusScraper
+import com.mangapill.app.data.scraper.ReaperScansScraper
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -36,7 +42,16 @@ data class HistoryEntry(
 class MangaRepository(private val db: AppDatabase) {
 
     private val scrapers: Map<String, BaseScraper> =
-        listOf<BaseScraper>(MangapillScraper(), MangaDexScraper()).associateBy { it.sourceId }
+        listOf<BaseScraper>(
+            MangapillScraper(), 
+            MangaDexScraper(), 
+            ComickScraper(), 
+            MangaKakalotScraper(),
+            AsuraScansScraper(),
+            ReaperScansScraper(),
+            FlameComicsScraper(),
+            ManhuaPlusScraper()
+        ).associateBy { it.sourceId }
 
     val sources: List<SourceInfo> = scrapers.values.map { SourceInfo(it.sourceId, it.sourceName) }
 
@@ -97,10 +112,11 @@ class MangaRepository(private val db: AppDatabase) {
         return out
     }
 
-    suspend fun search(query: String, sourceId: String? = null): List<Manga> {
-        val q = query.trim()
-        val results = cached("search:$sourceId:${q.lowercase()}", 5 * 60_000L) {
-            gather(sourceId) { it.search(q) }
+    suspend fun search(filters: com.mangapill.app.data.model.SearchFilters, sourceId: String? = null): List<Manga> {
+        val q = filters.query.trim()
+        val cacheKey = "search:$sourceId:${q.lowercase()}:${filters.type}:${filters.status}:${filters.genre}"
+        val results = cached(cacheKey, 5 * 60_000L) {
+            gather(sourceId) { it.search(filters.copy(query = q)) }
         }
         persist(results)
         return results

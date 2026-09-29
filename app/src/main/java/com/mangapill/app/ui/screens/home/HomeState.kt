@@ -26,9 +26,17 @@ class HomeState(
 ) {
     var query by mutableStateOf("")
         private set
-    /** null = all sources. */
+    var type by mutableStateOf<String?>(null)
+        private set
+    var status by mutableStateOf<String?>(null)
+        private set
+    var genre by mutableStateOf<String?>(null)
+        private set
+    
+    // We can remove the source variable if we no longer want it on the UI
     var source by mutableStateOf<String?>(null)
         private set
+
     var trending by mutableStateOf<List<Manga>>(emptyList())
         private set
     var latest by mutableStateOf<List<Manga>>(emptyList())
@@ -42,7 +50,7 @@ class HomeState(
 
     val gridState = LazyGridState()
 
-    val isSearching: Boolean get() = query.trim().length >= 2
+    val isSearching: Boolean get() = query.trim().length >= 2 || type != null || status != null || genre != null
 
     private var job: Job? = null
     private var requestId = 0
@@ -59,6 +67,24 @@ class HomeState(
         if (value.trim().length >= 2 || value.isBlank()) load(debounce = true)
     }
 
+    fun selectType(newType: String?) {
+        if (type == newType) return
+        type = newType
+        load(debounce = false)
+    }
+
+    fun selectStatus(newStatus: String?) {
+        if (status == newStatus) return
+        status = newStatus
+        load(debounce = false)
+    }
+
+    fun selectGenre(newGenre: String?) {
+        if (genre == newGenre) return
+        genre = newGenre
+        load(debounce = false)
+    }
+
     fun selectSource(id: String?) {
         if (id == source) return
         source = id
@@ -72,13 +98,15 @@ class HomeState(
         val id = ++requestId
         val q = query.trim()
         val src = source
+        val filters = com.mangapill.app.data.model.SearchFilters(query = q, type = type, status = status, genre = genre)
+        
         job = scope.launch {
             if (debounce && q.isNotEmpty()) delay(400)
             loading = true
             error = null
             try {
-                if (q.length >= 2) {
-                    val found = repository.search(q, src)
+                if (q.length >= 2 || type != null || status != null || genre != null) {
+                    val found = repository.search(filters, src)
                     if (id == requestId) results = found
                 } else {
                     val t = async { runCatching { repository.trending(src, force) } }

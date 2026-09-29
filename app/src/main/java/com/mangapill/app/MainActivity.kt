@@ -50,7 +50,6 @@ class MainActivity : ComponentActivity() {
                         composable(NavigationDestination.HOME.route) {
                             HomeScreen(
                                 state = homeState,
-                                sources = repository.sources,
                                 onMangaSelect = { m -> navController.navigate(Routes.manga(m.sourceId, m.id)) }
                             )
                         }

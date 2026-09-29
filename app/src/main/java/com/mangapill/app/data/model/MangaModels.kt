@@ -16,6 +16,13 @@ data class Manga(
     val key: String get() = "$sourceId:$id"
 }
 
+data class SearchFilters(
+    val query: String = "",
+    val type: String? = null, // e.g. "manga", "manhwa", "manhua"
+    val genre: String? = null,
+    val status: String? = null // e.g. "ongoing", "completed", "hiatus"
+)
+
 data class SourceInfo(val id: String, val name: String)
 
 enum class MangaStatus {

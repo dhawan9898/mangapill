@@ -20,8 +20,14 @@ class MangapillScraper : BaseScraper() {
     override val sourceName = "Mangapill"
     override val baseUrl = "https://mangapill.com"
 
-    override suspend fun search(query: String): List<Manga> =
-        parseMangaCards(fetchDocument("/search?q=${URLEncoder.encode(query, "UTF-8")}&type=&status="))
+    override suspend fun search(filters: com.mangapill.app.data.model.SearchFilters): List<Manga> {
+        if (filters.query.isBlank() && filters.type == null && filters.status == null) return getPopular()
+        var url = "/search?q=${URLEncoder.encode(filters.query, "UTF-8")}"
+        url += "&type=${filters.type ?: ""}"
+        val statusVal = when(filters.status?.lowercase()) { "ongoing" -> "publishing"; "completed" -> "finished"; "hiatus" -> "hiatus"; else -> "" }
+        url += "&status=$statusVal"
+        return parseMangaCards(fetchDocument(url))
+    }
 
     override suspend fun getPopular(): List<Manga> {
         val cards = parseMangaCards(fetchDocument("/"))
