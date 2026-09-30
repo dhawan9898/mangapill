@@ -1,14 +1,21 @@
 package com.mangapill.app.data.prefs
 
 import android.content.Context
+import com.mangapill.app.data.opds.OpdsServer
 import com.mangapill.app.data.scraper.SourceRegistry
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-/** Small user settings: which sources are enabled and recent searches. */
+/** Small user settings: OPDS servers, which sources are enabled and recent searches. */
 class AppPrefs(context: Context) {
     private val sp = context.getSharedPreferences("mangapill_prefs", Context.MODE_PRIVATE)
+
+    // Registered before the enabled set is loaded, so saved OPDS sources are recognised.
+    private val _opdsServers = MutableStateFlow(
+        OpdsServer.listFromJson(sp.getString(KEY_OPDS, null)).also { SourceRegistry.setOpdsServers(it) }
+    )
+    val opdsServers: StateFlow<List<OpdsServer>> = _opdsServers.asStateFlow()
 
     private val _enabledSources = MutableStateFlow(loadEnabled())
     val enabledSources: StateFlow<Set<String>> = _enabledSources.asStateFlow()
@@ -33,6 +40,29 @@ class AppPrefs(context: Context) {
         return true
     }
 
+    /** Adds or replaces (same id) a server and enables it. */
+    fun saveOpdsServer(server: OpdsServer) {
+        val next = _opdsServers.value.filterNot { it.id == server.id } + server
+        storeServers(next)
+        setSourceEnabled(server.sourceId, true)
+    }
+
+    fun removeOpdsServer(id: String) {
+        val removed = _opdsServers.value.firstOrNull { it.id == id } ?: return
+        storeServers(_opdsServers.value - removed)
+        val nextEnabled = _enabledSources.value - removed.sourceId
+        // Never leave zero sources enabled: fall back to the stable built-ins.
+        val safe = nextEnabled.ifEmpty { SourceRegistry.builtIn.filterNot { it.isExperimental }.map { it.sourceId }.toSet() }
+        _enabledSources.value = safe
+        sp.edit().putStringSet(KEY_ENABLED, safe).apply()
+    }
+
+    private fun storeServers(list: List<OpdsServer>) {
+        SourceRegistry.setOpdsServers(list)
+        _opdsServers.value = list
+        sp.edit().putString(KEY_OPDS, OpdsServer.listToJson(list)).apply()
+    }
+
     private fun loadRecents(): List<String> =
         sp.getString(KEY_RECENTS, null)?.split('\n')?.filter { it.isNotBlank() }.orEmpty()
 
@@ -52,6 +82,7 @@ class AppPrefs(context: Context) {
     private companion object {
         const val KEY_ENABLED = "enabled_sources"
         const val KEY_RECENTS = "recent_searches"
+        const val KEY_OPDS = "opds_servers"
         const val MAX_RECENTS = 8
     }
 }

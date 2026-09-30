@@ -55,8 +55,9 @@ data class Recommendation(val seed: Manga, val genre: String, val items: List<Ma
 
 class MangaRepository(private val db: AppDatabase, val prefs: AppPrefs) {
 
-    val sources: List<SourceInfo> =
-        SourceRegistry.all.map { SourceInfo(it.sourceId, it.sourceName, it.isExperimental) }
+    /** Built-in sources plus the user's OPDS servers; re-read after servers are added or removed. */
+    val sources: List<SourceInfo>
+        get() = SourceRegistry.all.map { SourceInfo(it.sourceId, it.sourceName, it.isExperimental) }
 
     private class CacheEntry(val at: Long, val value: Any)
 
