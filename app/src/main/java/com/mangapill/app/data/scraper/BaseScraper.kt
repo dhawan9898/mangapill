@@ -4,6 +4,7 @@ import com.mangapill.app.data.model.Chapter
 import com.mangapill.app.data.model.Manga
 import com.mangapill.app.data.model.PageImage
 import com.mangapill.app.data.model.SearchFilters
+import com.mangapill.app.data.opds.OpdsAuthInterceptor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -199,6 +200,7 @@ abstract class BaseScraper {
                 .readTimeout(20, TimeUnit.SECONDS)
                 .callTimeout(30, TimeUnit.SECONDS)
                 .cookieJar(MemoryCookieJar())
+                .addInterceptor(OpdsAuthInterceptor)
                 .build()
         }
 

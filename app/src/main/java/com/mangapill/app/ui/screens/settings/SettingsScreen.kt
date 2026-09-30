@@ -19,6 +19,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -40,6 +41,8 @@ import com.mangapill.app.ui.theme.TextSecondary
 fun SettingsScreen(repository: MangaRepository) {
     val context = LocalContext.current
     val enabled by repository.prefs.enabledSources.collectAsState()
+    // Read so the source list below recomposes when a server is added or removed.
+    val servers by repository.prefs.opdsServers.collectAsState()
 
     Column(
         Modifier
@@ -57,6 +60,9 @@ fun SettingsScreen(repository: MangaRepository) {
             modifier = Modifier.padding(top = 12.dp, bottom = 16.dp)
         )
 
+        OpdsServersCard(repository)
+
+        Spacer(Modifier.height(14.dp))
         LiquidGlassCard(Modifier.fillMaxWidth(), cornerRadius = 24.dp) {
             Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("Sources", color = TextPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold)
@@ -68,7 +74,7 @@ fun SettingsScreen(repository: MangaRepository) {
                     lineHeight = 17.sp
                 )
                 Spacer(Modifier.height(8.dp))
-                repository.sources.forEach { s ->
+                remember(servers) { repository.sources }.forEach { s ->
                     Row(
                         Modifier.fillMaxWidth().padding(vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically

@@ -10,6 +10,7 @@
         android:icon="@drawable/ic_launcher_foreground"
         android:label="Mangapill"
         android:supportsRtl="true"
+        android:usesCleartextTraffic="true"
         android:theme="@style/Theme.Mangapill">
         <activity
             android:name=".MainActivity"

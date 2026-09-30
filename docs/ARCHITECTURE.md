@@ -11,9 +11,11 @@ app/src/main/java/com/mangapill/app/
 ├── MainActivity.kt            NavHost + spring/fade screen transitions
 ├── data/
 │   ├── model/                 Unified schema: Manga, Chapter, PageImage, SearchFilters, Genres
+│   ├── opds/                  OPDS protocol: Atom + JSON parser, server config, Basic-auth interceptor
 │   ├── scraper/               One adapter per source (plugin pattern)
 │   │   ├── BaseScraper.kt       Networking, throttling, retries, Cloudflare detection, parsing helpers
-│   │   ├── SourceRegistry.kt    The list of adapters; add a source here
+│   │   ├── SourceRegistry.kt    Built-in adapters + the user's OPDS servers; add a source here
+│   │   ├── OpdsScraper.kt       Any OPDS 1.2 / 2.0 catalog: Komga, Kavita, Suwayomi, Stump, Codex (stable)
 │   │   ├── MangapillScraper.kt  HTML (stable)
 │   │   ├── MangaDexScraper.kt   Official JSON API (stable)
 │   │   ├── ComickScraper.kt     JSON API (experimental)
@@ -21,7 +23,7 @@ app/src/main/java/com/mangapill/app/
 │   │   └── MangaThemesiaScraper.kt WordPress Themesia/Madara sites: Asura, Reaper, Flame, ManhuaPlus (experimental)
 │   ├── repository/            Aggregation, caching, recommendations, history, bookmarks
 │   ├── local/                 Room database (offline metadata, history, library)
-│   └── prefs/                 Enabled sources, recent searches
+│   └── prefs/                 OPDS servers, enabled sources, recent searches
 └── ui/
     ├── components/glass/      Liquid Glass design system (liquidGlass modifier, aurora, chips, buttons)
     ├── components/manga/      Interactive Intro Card (quick-peek sheet)
@@ -53,6 +55,30 @@ Images are loaded by Coil with the Referer each source's CDN expects (`BaseScrap
 2. Implement search / popular / latest / details / chapters / pages, and `supports(filters)` for the
    filters the site really honours.
 3. Register it in `SourceRegistry`. Mark it `isExperimental = true` until it is verified on a device.
+
+## OPDS servers (the stable provider)
+
+Site scrapers break whenever a site changes its HTML or adds Cloudflare. OPDS is an open catalog
+standard that comic servers people host themselves speak, so it is the one kind of source that stays
+stable. The idea comes from [OpenComic](https://github.com/ollm/OpenComic), which reads comics from
+OPDS catalogs. OpenComic is GPL-3.0, so this is an independent implementation written against the
+specs, and it copies none of OpenComic's code.
+
+* **Formats**: OPDS 1.2 (Atom XML) and OPDS 2.0 (JSON), parsed into one model (`OpdsFeed`/`OpdsEntry`/`OpdsLink`).
+* **Mapping**: a feed of books (a series) is a `Manga`; its readable books are `Chapter`s in feed order
+  (numbered 1..n, shown newest first). One nested level (series → volumes → books) is followed, as are
+  `rel="next"` pages.
+* **Pages**: the [Page Streaming Extension](https://github.com/anansi-project/opds-pse)
+  (`pse:count` + a zero-based `{pageNumber}` template), or a Readium/DiViNa manifest's `readingOrder`.
+  Books offered only as CBZ/PDF downloads are skipped with a clear error.
+* **Lists**: popular/latest use `sort/popular` / `sort/new` links, or the root entries servers name
+  "All series" / "Latest series"; search uses OpenSearch `{searchTerms}` or an OPDS 2 `{?query}` template.
+* **Auth**: HTTP Basic, added by `OpdsAuthInterceptor` on the shared OkHttp client only when scheme, host
+  and port match the server, so covers and pages loaded by Coil authenticate too and credentials never
+  reach another host.
+* **Ids**: manga `s:<feed url>` (or `b:<chapter id>` for a lone book); chapters `p:<count>:<template>` or `m:<manifest url>`.
+* Servers are added in Settings (validated with a test request, removed again if it fails) and enabled
+  automatically. Cleartext HTTP is allowed so LAN servers such as `http://192.168.1.10:25600` work.
 
 ## Recommendations
 
