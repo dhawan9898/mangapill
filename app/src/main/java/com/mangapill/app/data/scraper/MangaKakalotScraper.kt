@@ -14,7 +14,7 @@ class MangaKakalotScraper : BaseScraper() {
     override val sourceId = "mangakakalot"
     override val sourceName = "MangaKakalot"
     override val baseUrl = "https://mangakakalot.com"
-    override val isExperimental = true
+
 
     /** Only the status filter exists, and only on the browse list (not together with a query). */
     override fun supports(filters: SearchFilters): Boolean =

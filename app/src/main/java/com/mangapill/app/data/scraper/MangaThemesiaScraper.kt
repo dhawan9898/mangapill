@@ -19,7 +19,7 @@ abstract class MangaThemesiaScraper : BaseScraper() {
 
     protected open val mangaListPath = "/manga"
     protected open val isMadara = false
-    override val isExperimental = true
+
 
     override fun supports(filters: SearchFilters): Boolean {
         if (!filters.hasFilters) return true

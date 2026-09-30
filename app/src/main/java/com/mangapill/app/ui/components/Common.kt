@@ -178,7 +178,6 @@ fun MangaPosterCard(
         Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f)) {
             MangaCover(manga, Modifier.fillMaxSize())
             Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(96.dp).background(ScrimBrush))
-            SourceBadge(sourceLabel(manga.sourceId), Modifier.align(Alignment.TopStart).padding(8.dp))
             RatingBadge(manga.rating, Modifier.align(Alignment.TopEnd).padding(8.dp))
             Text(
                 text = manga.title,
