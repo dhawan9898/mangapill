@@ -16,10 +16,10 @@ import java.net.URLEncoder
 class ComickScraper : BaseScraper() {
     override val sourceId = "comick"
     override val sourceName = "Comick"
-    override val baseUrl = "https://api.comick.fun"
+    override val baseUrl = "https://api.comick.dev"
     override val userAgent = "MangapillApp/1.0 (Android)"
-    override val isExperimental = true
-    override val imageReferer = "https://comick.io/"
+    override val isExperimental = false
+    override val imageReferer = "https://comick.dev/"
     override val supportsHiddenGems = true
 
     private val imageHost = "https://meo.comick.pictures"

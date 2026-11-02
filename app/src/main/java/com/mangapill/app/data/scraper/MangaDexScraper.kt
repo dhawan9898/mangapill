@@ -80,6 +80,7 @@ class MangaDexScraper : BaseScraper() {
             for (i in 0 until data.length()) {
                 val ch = data.getJSONObject(i)
                 val attrs = ch.getJSONObject("attributes")
+                if (attrs.optStringOrNull("externalUrl") != null || attrs.optInt("pages", 0) == 0) continue
                 val numberText = attrs.optStringOrNull("chapter")
                 val key = numberText ?: ch.getString("id")
                 if (byNumber.containsKey(key)) continue // several scanlation groups: keep the first

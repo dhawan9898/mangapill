@@ -145,11 +145,11 @@ abstract class MangaThemesiaScraper : BaseScraper() {
     // ---------------------------------------------------------------------------------------------
 
     internal fun parseCards(doc: Document): List<Manga> {
-        val cards = doc.select(".bs .bsx, .listupd .utao, .page-item-detail, .c-tabs-item__content, .row.c-tabs-item")
+        val cards = doc.select(".bs .bsx, .listupd .utao, .page-item-detail, .c-tabs-item__content, .row.c-tabs-item, .page-listing-item, .manga-item, .badge-pos-1, .item-summary")
         return cards.mapNotNull { el ->
             val a = el.selectFirst("a[href]") ?: return@mapNotNull null
             val path = pathOf(a.absUrl("href")) ?: return@mapNotNull null
-            val title = el.selectFirst(".tt, .post-title h3, .post-title h5, h3 a, h4 a")?.text()?.trim().orEmpty()
+            val title = el.selectFirst(".tt, .post-title h3, .post-title h5, .post-title h1, h3 a, h4 a, h3")?.text()?.trim().orEmpty()
                 .ifBlank { a.attr("title").trim() }
                 .ifBlank { el.selectFirst("img[alt]")?.attr("alt")?.trim().orEmpty() }
                 .ifBlank { prettifySlug(path) }

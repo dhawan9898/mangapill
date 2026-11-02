@@ -5,4 +5,5 @@ class ReaperScansScraper : MangaThemesiaScraper() {
     override val sourceName = "Reaper Scans"
     override val baseUrl = "https://reaperscans.com"
     override val mangaListPath = "/series"
+    override val isExperimental = true
 }

@@ -14,6 +14,8 @@ class MangaKakalotScraper : BaseScraper() {
     override val sourceId = "mangakakalot"
     override val sourceName = "MangaKakalot"
     override val baseUrl = "https://mangakakalot.com"
+    override val isExperimental = true
+    override val userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 
 
     /** Only the status filter exists, and only on the browse list (not together with a query). */
