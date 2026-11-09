@@ -55,6 +55,11 @@ data class Recommendation(val seed: Manga, val genre: String, val items: List<Ma
 
 class MangaRepository(private val db: AppDatabase, val prefs: AppPrefs) {
 
+    private companion object {
+        const val MAX_CACHE_ENTRIES = 300
+        const val CACHE_TRIM_BATCH = 30
+    }
+
     /** Built-in sources plus the user's OPDS servers; re-read after servers are added or removed. */
     val sources: List<SourceInfo>
         get() = SourceRegistry.all.map { SourceInfo(it.sourceId, it.sourceName, it.isExperimental) }
@@ -74,6 +79,11 @@ class MangaRepository(private val db: AppDatabase, val prefs: AppPrefs) {
 
     private fun cachePut(key: String, value: Any) {
         cache[key] = CacheEntry(System.currentTimeMillis(), value)
+        // Bounded: a long session of browsing and searching must not grow memory without limit.
+        if (cache.size > MAX_CACHE_ENTRIES) {
+            cache.entries.sortedBy { it.value.at }.take(cache.size - MAX_CACHE_ENTRIES + CACHE_TRIM_BATCH)
+                .forEach { cache.remove(it.key) }
+        }
     }
 
     private suspend fun <T : Any> cached(key: String, ttlMs: Long, force: Boolean = false, loader: suspend () -> T): T {

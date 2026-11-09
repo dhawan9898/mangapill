@@ -6,7 +6,7 @@
 
     <application
         android:name=".MangapillApp"
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:icon="@drawable/ic_launcher_foreground"
         android:label="Mangapill"
         android:supportsRtl="true"

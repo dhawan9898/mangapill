@@ -133,9 +133,12 @@ class OpdsScraper(val server: OpdsServer) : BaseScraper() {
         }
 
         // Feeds list books in reading order; the app shows newest first.
-        return entries.distinctBy { chapterId(it) }.mapIndexed { i, e ->
-            Chapter(id = chapterId(e)!!, mangaId = sourceMangaId, chapterNumber = (i + 1).toFloat(), title = e.title)
-        }.reversed()
+        // An entry without a usable id cannot be opened later: skip it rather than crash on it.
+        return entries.mapNotNull { e -> chapterId(e)?.let { id -> id to e } }
+            .distinctBy { it.first }
+            .mapIndexed { i, (id, e) ->
+                Chapter(id = id, mangaId = sourceMangaId, chapterNumber = (i + 1).toFloat(), title = e.title)
+            }.reversed()
     }
 
     private data class Readable(val entries: List<OpdsEntry>, val hasDownloads: Boolean)
@@ -219,7 +222,7 @@ class OpdsScraper(val server: OpdsServer) : BaseScraper() {
         for (hint in hints) {
             nav.firstOrNull { e ->
                 e.title.contains(hint, ignoreCase = true) && exclude.none { e.title.contains(it, ignoreCase = true) }
-            }?.let { return it.feedLink!!.href }
+            }?.feedLink?.let { return it.href }
         }
         return null
     }
