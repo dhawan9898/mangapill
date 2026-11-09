@@ -40,6 +40,9 @@ jobs:
         run: chmod +x gradlew
 
       # ---- Pull requests: just prove it compiles ------------------------------------------------
+      - name: Run unit tests
+        run: ./gradlew testDebugUnitTest --stacktrace
+
       - name: Build debug APK (PR check)
         if: env.IS_RELEASE != 'true'
         run: ./gradlew assembleDebug --stacktrace

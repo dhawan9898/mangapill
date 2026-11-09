@@ -52,6 +52,10 @@ android {
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.8"
     }
+    testOptions {
+        // android.* calls that are not mocked return defaults instead of throwing.
+        unitTests.isReturnDefaultValues = true
+    }
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
@@ -89,4 +93,9 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
 
     debugImplementation(libs.androidx.compose.ui.tooling)
+
+    // JVM unit tests (parsers run on plain Jsoup/JSON, no device needed).
+    testImplementation("junit:junit:4.13.2")
+    // Android's org.json is a stub in unit tests; the real library stands in for it.
+    testImplementation("org.json:json:20240303")
 }
