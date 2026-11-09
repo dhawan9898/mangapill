@@ -1,13 +1,7 @@
 package com.mangapill.app.ui.components.glass
 
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -33,23 +27,13 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.mangapill.app.ui.theme.CyanAccent
 import com.mangapill.app.ui.theme.OledBackground
-import com.mangapill.app.ui.theme.PinkAccent
 import com.mangapill.app.ui.theme.PurpleAccent
 
 /** Iridescent rim used on every glass surface. */
-val IridescentBorder = Brush.linearGradient(
-    listOf(
-        Color(0x59FFFFFF),
-        PurpleAccent.copy(alpha = 0.35f),
-        CyanAccent.copy(alpha = 0.18f),
-        PinkAccent.copy(alpha = 0.25f),
-        Color(0x33FFFFFF)
-    )
-)
+val IridescentBorder = Brush.linearGradient(listOf(Color(0x24FFFFFF), Color(0x0FFFFFFF), Color(0x1FFFFFFF)))
 
-val BrandGradient = Brush.linearGradient(listOf(PurpleAccent, Color(0xFF6366F1), CyanAccent))
+val BrandGradient = Brush.linearGradient(listOf(Color(0xFFFF3B45), PurpleAccent))
 
 /**
  * "Liquid glass" surface: a translucent frosted fill (lighter at the top, like light hitting a
@@ -69,16 +53,9 @@ fun Modifier.liquidGlass(
     )
     .border(borderWidth, IridescentBorder, shape)
 
-/** Slowly drifting aurora behind the whole app; the glass panels pick up its colour. */
+/** Near-black backdrop with a faint red glow at the top, like Anistream. */
 @Composable
 fun LiquidBackground(modifier: Modifier = Modifier) {
-    val transition = rememberInfiniteTransition(label = "aurora")
-    val p by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(16_000, easing = LinearEasing), RepeatMode.Reverse),
-        label = "auroraPhase"
-    )
     Box(
         modifier
             .fillMaxSize()
@@ -90,9 +67,7 @@ fun LiquidBackground(modifier: Modifier = Modifier) {
                     val c = Offset(x, y)
                     drawCircle(Brush.radialGradient(listOf(color, Color.Transparent), center = c, radius = r), r, c)
                 }
-                blob(PurpleAccent.copy(alpha = 0.24f), w * (0.1f + 0.35f * p), h * 0.08f, w * 0.95f)
-                blob(CyanAccent.copy(alpha = 0.10f), w * (1f - 0.35f * p), h * (0.42f + 0.12f * p), w * 0.8f)
-                blob(PinkAccent.copy(alpha = 0.09f), w * (0.25f + 0.3f * p), h * (0.98f - 0.12f * p), w * 0.9f)
+                blob(PurpleAccent.copy(alpha = 0.10f), w * 0.5f, -h * 0.02f, w * 1.1f)
             }
     )
 }

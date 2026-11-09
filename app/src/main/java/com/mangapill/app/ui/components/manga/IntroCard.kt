@@ -110,7 +110,7 @@ fun IntroCardSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = Color(0xF20C0C14),
+        containerColor = Color(0xF217171A),
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
         dragHandle = {
             Box(

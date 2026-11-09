@@ -70,7 +70,7 @@ fun Modifier.shimmer(): Modifier = composed {
     )
     background(
         Brush.linearGradient(
-            colors = listOf(Color(0xFF14141C), Color(0xFF262636), Color(0xFF14141C)),
+            colors = listOf(Color(0xFF17171A), Color(0xFF26262C), Color(0xFF17171A)),
             start = Offset(x, 0f),
             end = Offset(x + 400f, 400f)
         )
@@ -92,7 +92,7 @@ fun coverReferer(manga: Manga): String? = SourceRegistry.imageReferer(manga.sour
 
 @Composable
 fun CoverFallback(modifier: Modifier = Modifier) {
-    Box(modifier.background(Color(0xFF1A1A24)), contentAlignment = Alignment.Center) {
+    Box(modifier.background(Color(0xFF1E1E22)), contentAlignment = Alignment.Center) {
         Icon(Icons.Default.BrokenImage, contentDescription = null, tint = TextMuted, modifier = Modifier.size(28.dp))
     }
 }

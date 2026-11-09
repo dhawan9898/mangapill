@@ -35,6 +35,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -43,6 +44,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -88,6 +90,9 @@ fun DualModeReaderScreen(
     var readerMode by remember { mutableStateOf(ReaderMode.WEBTOON) }
     var showControls by remember { mutableStateOf(true) }
     var currentPage by remember { mutableIntStateOf(1) }
+    val zoom = rememberZoomState()
+    // Set by the active reader branch: scrolls the list / pager by whatever a zoomed pan couldn't use.
+    var overflowHandler by remember { mutableStateOf<(Offset) -> Unit>({}) }
 
     LaunchedEffect(sourceId, chapterId, reloadTick) {
         loading = true
@@ -152,10 +157,12 @@ fun DualModeReaderScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
-            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                showControls = !showControls
-            }
     ) {
+      Box(
+        Modifier
+            .fillMaxSize()
+            .zoomable(zoom, onTap = { showControls = !showControls }, onOverflow = { overflowHandler(it) })
+      ) {
         when {
             loading -> CircularProgressIndicator(color = PurpleAccent, modifier = Modifier.align(Alignment.Center))
 
@@ -175,6 +182,9 @@ fun DualModeReaderScreen(
                 LaunchedEffect(listState, pages) {
                     snapshotFlow { listState.firstVisibleItemIndex }.distinctUntilChanged().collect { currentPage = it + 1 }
                 }
+                SideEffect {
+                    overflowHandler = { o -> listState.dispatchRawDelta(-o.y / zoom.scale) }
+                }
                 LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                     itemsIndexed(pages, key = { _, p -> p.pageNumber }) { _, page ->
                         PageImageView(page, ContentScale.FillWidth, Modifier.fillMaxWidth(), minHeight = 480)
@@ -190,11 +200,19 @@ fun DualModeReaderScreen(
                 LaunchedEffect(pagerState, pages) {
                     snapshotFlow { pagerState.currentPage }.distinctUntilChanged().collect { currentPage = it + 1 }
                 }
-                HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { i ->
+                SideEffect {
+                    overflowHandler = { o -> pagerState.dispatchRawDelta(-o.x) }
+                }
+                LaunchedEffect(pagerState) {
+                    snapshotFlow { pagerState.settledPage }.distinctUntilChanged().collect { zoom.reset() }
+                }
+                HorizontalPager(state = pagerState, userScrollEnabled = !zoom.isZoomed, modifier = Modifier.fillMaxSize()) { i ->
                     PageImageView(pages[i], ContentScale.Fit, Modifier.fillMaxSize(), minHeight = 0)
                 }
             }
         }
+
+      }
 
         AnimatedVisibility(
             visible = showControls,
@@ -227,6 +245,7 @@ fun DualModeReaderScreen(
                         .clip(RoundedCornerShape(12.dp))
                         .background(Color.White.copy(alpha = 0.15f))
                         .clickable {
+                            zoom.reset()
                             readerMode = if (readerMode == ReaderMode.WEBTOON) ReaderMode.MANGA_HORIZONTAL else ReaderMode.WEBTOON
                         }
                         .padding(horizontal = 12.dp, vertical = 8.dp),
@@ -242,6 +261,25 @@ fun DualModeReaderScreen(
                     )
                 }
             }
+        }
+
+        AnimatedVisibility(
+            visible = zoom.isZoomed,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 64.dp, end = 12.dp)
+        ) {
+            Text(
+                text = "%.1fx  ·  Reset".format(zoom.scale),
+                color = Color.White,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(PurpleAccent)
+                    .clickable { zoom.reset() }
+                    .padding(horizontal = 14.dp, vertical = 8.dp)
+            )
         }
 
         AnimatedVisibility(
@@ -289,7 +327,7 @@ private fun PageImageView(page: PageImage, scale: ContentScale, modifier: Modifi
             }
         },
         error = {
-            Box(sizeModifier.background(Color(0xFF14141C)).clickable { attempt++ }, contentAlignment = Alignment.Center) {
+            Box(sizeModifier.background(Color(0xFF17171A)).clickable { attempt++ }, contentAlignment = Alignment.Center) {
                 Text("Failed to load page ${page.pageNumber}. Tap to retry.", color = TextMuted, fontSize = 12.sp)
             }
         }

@@ -2,27 +2,27 @@ package com.mangapill.app.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-val OledBackground = Color(0xFF050508)
-val OledSurface = Color(0xFF0A0A0F)
-val OledCard = Color(0xFF12121A)
+val OledBackground = Color(0xFF0B0B0D)
+val OledSurface = Color(0xFF17171A)
+val OledCard = Color(0xFF212126)
 
-val GlassBorder = Color(0x33FFFFFF)
+val GlassBorder = Color(0x14FFFFFF)
 val GlassHighlight = Color(0x40FFFFFF)
-val GlassGlowPurple = Color(0x338B5CF6)
-val GlassGlowIndigo = Color(0x336366F1)
+val GlassGlowPurple = Color(0x33E50914)
+val GlassGlowIndigo = Color(0x33FF3B45)
 
-val PurpleAccent = Color(0xFF8B5CF6)
-val PurpleAccentDark = Color(0xFF6D28D9)
-val IndigoAccent = Color(0xFF6366F1)
+val PurpleAccent = Color(0xFFE50914)
+val PurpleAccentDark = Color(0xFFB20710)
+val IndigoAccent = Color(0xFFFF3B45)
 
 val AmberRating = Color(0xFFFFB800)
 val EmeraldStatus = Color(0xFF10B981)
 val BlueStatus = Color(0xFF3B82F6)
 
 val TextPrimary = Color(0xFFF4F4F5)
-val TextSecondary = Color(0xFFA1A1AA)
-val TextMuted = Color(0xFF71717A)
+val TextSecondary = Color(0xFFA8A8B3)
+val TextMuted = Color(0xFF6F6F7B)
 
-val CyanAccent = Color(0xFF22D3EE)
-val PinkAccent = Color(0xFFF472B6)
-val GlassDark = Color(0xE00B0B12)
+val CyanAccent = Color(0xFFFF3B45)
+val PinkAccent = Color(0xFFF59E0B)
+val GlassDark = Color(0xE60B0B0D)

@@ -403,7 +403,7 @@ private fun FeaturedSlide(manga: Manga, rank: Int, onOpen: () -> Unit, onPeek: (
         MangaCover(manga, Modifier.fillMaxSize().blur(26.dp))
         Box(
             Modifier.fillMaxSize().background(
-                Brush.horizontalGradient(listOf(Color(0xF2050508), Color(0xB3050508), Color(0x40050508)))
+                Brush.horizontalGradient(listOf(Color(0xF20B0B0D), Color(0xB30B0B0D), Color(0x400B0B0D)))
             )
         )
         Box(Modifier.fillMaxSize().border(1.dp, IridescentBorder, shape))
@@ -529,7 +529,7 @@ fun FilterSheet(state: HomeState, repository: MangaRepository, onDismiss: () -> 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = Color(0xF20C0C14),
+        containerColor = Color(0xF217171A),
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
         dragHandle = {
             Box(
