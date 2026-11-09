@@ -55,11 +55,6 @@ data class Recommendation(val seed: Manga, val genre: String, val items: List<Ma
 
 class MangaRepository(private val db: AppDatabase, val prefs: AppPrefs) {
 
-    private companion object {
-        const val MAX_CACHE_ENTRIES = 300
-        const val CACHE_TRIM_BATCH = 30
-    }
-
     /** Built-in sources plus the user's OPDS servers; re-read after servers are added or removed. */
     val sources: List<SourceInfo>
         get() = SourceRegistry.all.map { SourceInfo(it.sourceId, it.sourceName, it.isExperimental) }
@@ -366,5 +361,7 @@ class MangaRepository(private val db: AppDatabase, val prefs: AppPrefs) {
         const val MULTI_SOURCE_TIMEOUT_MS = 10_000L
         const val SINGLE_SOURCE_TIMEOUT_MS = 25_000L
         const val COOLDOWN_MS = 3 * 60_000L
+        const val MAX_CACHE_ENTRIES = 300
+        const val CACHE_TRIM_BATCH = 30
     }
 }
