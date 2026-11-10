@@ -42,7 +42,7 @@ import androidx.compose.ui.unit.sp
 import com.mangapill.app.data.opds.OpdsServer
 import com.mangapill.app.data.repository.MangaRepository
 import com.mangapill.app.data.scraper.OpdsScraper
-import com.mangapill.app.ui.components.glass.GradientButton
+import com.mangapill.app.ui.components.glass.PrimaryButton
 import com.mangapill.app.ui.components.glass.LiquidGlassCard
 import com.mangapill.app.ui.theme.PinkAccent
 import com.mangapill.app.ui.theme.PurpleAccent
@@ -67,12 +67,26 @@ fun OpdsServersCard(repository: MangaRepository) {
     var password by remember { mutableStateOf("") }
     var testing by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var removing by remember { mutableStateOf<OpdsServer?>(null) }
 
     fun reset() {
         name = ""; url = ""; username = ""; password = ""; error = null; adding = false
     }
 
-    LiquidGlassCard(Modifier.fillMaxWidth(), cornerRadius = 24.dp) {
+    removing?.let { server ->
+        com.mangapill.app.ui.components.ConfirmDialog(
+            title = "Remove ${server.name}?",
+            message = "Its titles disappear from search, and you would need the address and password to add it again.",
+            confirmLabel = "Remove",
+            onConfirm = {
+                repository.prefs.removeOpdsServer(server.id)
+                removing = null
+            },
+            onDismiss = { removing = null }
+        )
+    }
+
+    LiquidGlassCard(Modifier.fillMaxWidth(), cornerRadius = 22.dp) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text("OPDS servers", color = TextPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold)
             Text(
@@ -90,7 +104,7 @@ fun OpdsServersCard(repository: MangaRepository) {
                         Text(s.name, color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                         Text(s.url, color = TextMuted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
-                    IconButton(onClick = { repository.prefs.removeOpdsServer(s.id) }) {
+                    IconButton(onClick = { removing = s }) {
                         Icon(Icons.Default.Delete, contentDescription = "Remove ${s.name}", tint = TextSecondary)
                     }
                 }
@@ -98,10 +112,10 @@ fun OpdsServersCard(repository: MangaRepository) {
 
             Spacer(Modifier.height(8.dp))
             if (!adding) {
-                GradientButton(onClick = { adding = true }, modifier = Modifier.fillMaxWidth()) {
-                    Icon(Icons.Default.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                PrimaryButton(onClick = { adding = true }, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("Add server", color = Color.White, fontWeight = FontWeight.SemiBold)
+                    Text("Add server", fontWeight = FontWeight.SemiBold)
                 }
             } else {
                 Field(name, { name = it }, "Name (e.g. Komga)")
@@ -118,7 +132,7 @@ fun OpdsServersCard(repository: MangaRepository) {
                 error?.let { Text(it, color = PinkAccent, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp)) }
 
                 Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    GradientButton(
+                    PrimaryButton(
                         onClick = {
                             val server = OpdsServer(
                                 id = UUID.randomUUID().toString().take(8),
@@ -148,14 +162,12 @@ fun OpdsServersCard(repository: MangaRepository) {
                         modifier = Modifier.weight(1f)
                     ) {
                         if (testing) {
-                            CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+                            CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
                         } else {
-                            Text("Test & save", color = Color.White, fontWeight = FontWeight.SemiBold)
+                            Text("Test & save", fontWeight = FontWeight.SemiBold)
                         }
                     }
-                    GradientButton(onClick = { reset() }, enabled = !testing) {
-                        Text("Cancel", color = Color.White)
-                    }
+                    com.mangapill.app.ui.components.PillButton("Cancel", onClick = { if (!testing) reset() })
                 }
             }
         }

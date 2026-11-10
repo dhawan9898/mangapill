@@ -28,7 +28,7 @@ app/src/main/java/com/mangapill/app/
     ├── components/glass/      Liquid Glass design system (liquidGlass modifier, aurora, chips, buttons)
     ├── components/manga/      Interactive Intro Card (quick-peek sheet)
     ├── navigation/            Floating glass tab bar / tablet rail, routes
-    └── screens/               home, details, reader, library, history, settings
+    └── screens/               home, search, details, reader, library (history + my list), settings
 ```
 
 ## Data flow
@@ -102,7 +102,9 @@ Source mapping is part of the key, so the same title from two sources is two row
 
 ## Reader
 
-* Webtoon mode: zero-gap vertical `LazyColumn`. Paged mode: `HorizontalPager`.
+* Webtoon mode: zero-gap vertical `LazyColumn`. Paged mode: `HorizontalPager`; right-to-left mode is the same
+  pager mirrored. The chosen mode is saved (Settings → Reader) and every chapter opens in it. Paged modes end
+  with a "next chapter" page, and tapping the outer thirds turns pages.
 * Progress (page + percentage) is written to Room on every page change and restored when reopening.
 * The next 4 pages are pre-fetched; near the end of a chapter the whole next chapter is downloaded into
   Coil's disk cache so it opens instantly and survives a poor connection.

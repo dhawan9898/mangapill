@@ -236,38 +236,23 @@ fun StateMessage(
     actionLabel: String? = null,
     onAction: (() -> Unit)? = null
 ) {
+    // Same layout as the empty / error states of AniStream and CineStream: a red icon, a bold title,
+    // the explanation and a plain "Try again" pill.
     Column(
-        modifier = modifier.fillMaxWidth().padding(32.dp),
+        modifier = modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 40.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterVertically)
+        verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically)
     ) {
-        Box(
-            Modifier.size(68.dp).liquidGlass(CircleShape, 0.08f),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(icon, contentDescription = null, tint = PurpleAccent, modifier = Modifier.size(30.dp))
-        }
+        Icon(icon, contentDescription = null, tint = PurpleAccent, modifier = Modifier.size(38.dp))
+        Spacer(Modifier.height(2.dp))
         Text(title, color = TextPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
-        Text(message, color = TextSecondary, fontSize = 13.sp, textAlign = TextAlign.Center, lineHeight = 18.sp)
+        Text(message, color = TextSecondary, fontSize = 13.sp, textAlign = TextAlign.Center, lineHeight = 19.sp)
         if (actionLabel != null && onAction != null) {
-            GradientButton(onClick = onAction) {
-                Icon(Icons.Default.Refresh, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(6.dp))
-                Text(actionLabel, color = Color.White, fontWeight = FontWeight.Bold)
-            }
+            Spacer(Modifier.height(6.dp))
+            PillButton(actionLabel, onAction, icon = Icons.Default.Refresh)
         }
     }
 }
 
 /** Turns a raw exception message into something a person can act on. */
-fun friendlyError(e: Throwable): String {
-    val msg = e.message.orEmpty()
-    return when {
-        e is java.net.UnknownHostException || msg.contains("Unable to resolve host") ->
-            "No internet connection. Check your network and try again."
-        e is java.net.SocketTimeoutException || msg.contains("timeout", true) || msg.contains("timed out", true) ->
-            "The source took too long to respond."
-        msg.isNotBlank() -> msg
-        else -> "Something went wrong."
-    }
-}
+fun friendlyError(e: Throwable): String = com.mangapill.app.data.ErrorText.describe(e)

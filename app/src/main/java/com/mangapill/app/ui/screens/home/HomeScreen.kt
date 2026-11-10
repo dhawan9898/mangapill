@@ -66,43 +66,29 @@ import com.mangapill.app.ui.components.PosterSkeleton
 import com.mangapill.app.ui.components.SectionHeader
 import com.mangapill.app.ui.components.StateMessage
 import com.mangapill.app.ui.components.bleed
+import com.mangapill.app.ui.components.Wordmark
+import com.mangapill.app.ui.components.glass.GlassIconButton
+import androidx.compose.material.icons.outlined.Search
 import com.mangapill.app.ui.components.glass.GlassChip
 import com.mangapill.app.ui.components.manga.IntroCardSheet
 import com.mangapill.app.ui.navigation.bottomContentPadding
 import com.mangapill.app.ui.theme.PurpleAccent
 import com.mangapill.app.ui.theme.TextMuted
 
-/** Dimming scrim plus the suggestion panel dropping down from the search bar. */
-@Composable
-private fun SuggestionsOverlay(visible: Boolean, onDismiss: () -> Unit, panel: @Composable () -> Unit) {
-    Box(Modifier.fillMaxSize()) {
-        AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut()) {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(Color(0xA6000000))
-                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onDismiss)
-            )
-        }
-        AnimatedVisibility(
-            visible = visible,
-            enter = fadeIn() + expandVertically(spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow), expandFrom = Alignment.Top),
-            exit = fadeOut() + shrinkVertically(shrinkTowards = Alignment.Top)
-        ) {
-            panel()
-        }
-    }
-}
+internal val FullSpan: LazyGridItemSpanScope.() -> GridItemSpan = { GridItemSpan(maxLineSpan) }
 
-private val FullSpan: LazyGridItemSpanScope.() -> GridItemSpan = { GridItemSpan(maxLineSpan) }
-
+/**
+ * Home: the wordmark header with a search button (which opens the Search tab, as in AniStream),
+ * the source chips and the dashboard rows. Search, filters and results live on the Search tab.
+ */
 @Composable
 fun HomeScreen(
     state: HomeState,
     repository: MangaRepository,
     onMangaSelect: (Manga) -> Unit,
     onReadChapter: (Manga, Chapter) -> Unit,
-    onContinue: (HistoryEntry) -> Unit
+    onContinue: (HistoryEntry) -> Unit,
+    onOpenSearch: () -> Unit
 ) {
     LaunchedEffect(Unit) { state.start() }
 
@@ -111,84 +97,23 @@ fun HomeScreen(
 
     val history by remember { repository.historyEntries() }.collectAsState(initial = emptyList())
     val favorites by remember { repository.bookmarkedManga() }.collectAsState(initial = emptyList())
-    val recents by repository.prefs.recentSearches.collectAsState()
     LaunchedEffect(history.firstOrNull()?.manga?.key) { state.refreshRecommendations(history.firstOrNull()?.manga?.key) }
 
-    val focusManager = LocalFocusManager.current
-    var searchFocused by remember { mutableStateOf(false) }
-    var showFilters by rememberSaveable { mutableStateOf(false) }
     var peek by remember { mutableStateOf<Manga?>(null) }
     val columns = if (LocalConfiguration.current.screenWidthDp >= 600) 5 else 2
     val sources = remember(enabled) { repository.sources.filter { it.id in enabled } }
 
-    val open: (Manga) -> Unit = { m ->
-        if (state.query.isNotBlank()) state.submit()
-        focusManager.clearFocus()
-        onMangaSelect(m)
-    }
-
-    BackHandler(enabled = searchFocused) { focusManager.clearFocus() }
-    BackHandler(enabled = !searchFocused && state.isSearching) {
-        state.updateQuery("")
-        state.clearFilters()
-    }
-
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
-        HomeHeader(Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 12.dp))
-        GlassSearchBar(
-            query = state.query,
-            onQueryChange = state::updateQuery,
-            onSubmit = {
-                state.submit()
-                focusManager.clearFocus()
-            },
-            onFocusChange = { searchFocused = it },
-            focused = searchFocused,
-            filterCount = state.activeFilterCount,
-            onOpenFilters = {
-                focusManager.clearFocus()
-                showFilters = true
-            },
-            modifier = Modifier.padding(horizontal = 16.dp)
-        )
-        SourceChipsRow(sources, state.source, state::selectSource)
-
-        Box(Modifier.fillMaxWidth().weight(1f)) {
-            AnimatedContent(
-                targetState = state.isSearching,
-                transitionSpec = { fadeIn(tween(240)) togetherWith fadeOut(tween(160)) },
-                label = "homeContent"
-            ) { searching ->
-                if (searching) {
-                    SearchResults(state, columns, open) { peek = it }
-                } else {
-                    Dashboard(state, history, favorites, columns, open, { peek = it }, onContinue)
-                }
-            }
-
-            val showSuggestions = searchFocused && !state.submitted && (state.query.isNotBlank() || recents.isNotEmpty())
-            SuggestionsOverlay(visible = showSuggestions, onDismiss = { focusManager.clearFocus() }) {
-                SuggestionsPanel(
-                    query = state.query,
-                    results = state.results,
-                    pending = state.searchPending,
-                    recents = recents,
-                    onPick = open,
-                    onRecent = { q ->
-                        state.searchFor(q)
-                        focusManager.clearFocus()
-                    },
-                    onClearRecents = { repository.prefs.clearRecentSearches() },
-                    onSeeAll = {
-                        state.submit()
-                        focusManager.clearFocus()
-                    }
-                )
-            }
+        Row(
+            Modifier.fillMaxWidth().padding(start = 20.dp, end = 16.dp, top = 8.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Wordmark(Modifier.weight(1f))
+            GlassIconButton(Icons.Outlined.Search, "Search", onOpenSearch)
         }
+        SourceChipsRow(sources, state.source, state::selectSource)
+        Dashboard(state, history, favorites, columns, onMangaSelect, { peek = it }, onContinue)
     }
-
-    if (showFilters) FilterSheet(state, repository) { showFilters = false }
 
     peek?.let { m ->
         IntroCardSheet(
@@ -197,7 +122,7 @@ fun HomeScreen(
             onDismiss = { peek = null },
             onOpenDetails = {
                 peek = null
-                open(m)
+                onMangaSelect(m)
             },
             onChapter = { ch ->
                 peek = null
@@ -292,62 +217,3 @@ private fun Dashboard(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
-@Composable
-private fun SearchResults(state: HomeState, columns: Int, onOpen: (Manga) -> Unit, onPeek: (Manga) -> Unit) {
-    LazyVerticalGrid(
-        state = state.resultsGrid,
-        columns = GridCells.Fixed(columns),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = bottomContentPadding()),
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-        modifier = Modifier.fillMaxSize()
-    ) {
-        item(key = "header", span = FullSpan) {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    SectionHeader(
-                        title = if (state.query.isBlank()) "Browse" else "Results",
-                        subtitle = if (state.results.isEmpty()) null else "${state.results.size} titles",
-                        modifier = Modifier.weight(1f)
-                    )
-                    if (state.searchPending) {
-                        CircularProgressIndicator(color = PurpleAccent, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("Searching…", color = TextMuted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                    }
-                }
-                ActiveFilters(state)
-            }
-        }
-
-        when {
-            state.results.isNotEmpty() -> items(state.results, key = { it.key }) { m ->
-                MangaPosterCard(m, onClick = { onOpen(m) }, modifier = Modifier.animateItemPlacement(), onLongClick = { onPeek(m) })
-            }
-
-            state.searchPending -> items(6, key = { "skeleton$it" }) { PosterSkeleton() }
-
-            else -> item(key = "empty", span = FullSpan) {
-                StateMessage(
-                    icon = Icons.Default.SearchOff,
-                    title = "No results",
-                    message = state.searchError
-                        ?: "Nothing matched. Try another title, remove a filter or switch source."
-                )
-            }
-        }
-    }
-}
-
-/** Removable chips for the filters currently applied. */
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun ActiveFilters(state: HomeState) {
-    if (state.activeFilterCount == 0) return
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        state.type?.let { t -> GlassChip(t.replaceFirstChar { it.uppercase() }, true, { state.selectType(null) }, leading = Icons.Default.Close) }
-        state.status?.let { s -> GlassChip(s.replaceFirstChar { it.uppercase() }, true, { state.selectStatus(null) }, leading = Icons.Default.Close) }
-        state.genre?.let { g -> GlassChip(Genres.bySlug(g)?.name ?: g, true, { state.selectGenre(null) }, leading = Icons.Default.Close) }
-    }
-}

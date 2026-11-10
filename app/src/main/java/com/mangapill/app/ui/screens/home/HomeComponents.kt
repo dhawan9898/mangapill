@@ -95,7 +95,7 @@ import com.mangapill.app.ui.components.sourceLabel
 import com.mangapill.app.ui.components.glass.BrandGradient
 import com.mangapill.app.ui.components.glass.GlassChip
 import com.mangapill.app.ui.components.glass.GlassIconButton
-import com.mangapill.app.ui.components.glass.GradientButton
+import com.mangapill.app.ui.components.glass.PrimaryButton
 import com.mangapill.app.ui.components.glass.IridescentBorder
 import com.mangapill.app.ui.components.glass.LiquidGlassCard
 import com.mangapill.app.ui.components.glass.liquidGlass
@@ -111,34 +111,6 @@ import kotlin.math.absoluteValue
 
 // ---- Header & search ----------------------------------------------------------------------------
 
-/** Gradient wordmark. Drawn with SrcAtop so it works on every Compose version. */
-@Composable
-fun HomeHeader(modifier: Modifier = Modifier) {
-    val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
-    val greeting = when (hour) {
-        in 5..11 -> "Good morning"
-        in 12..17 -> "Good afternoon"
-        else -> "Good evening"
-    }
-    Column(modifier) {
-        Text(greeting, color = TextMuted, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-        Text(
-            "Mangapill",
-            color = Color.White,
-            fontSize = 30.sp,
-            fontWeight = FontWeight.Black,
-            modifier = Modifier
-                .graphicsLayer(alpha = 0.99f)
-                .drawWithCache {
-                    onDrawWithContent {
-                        drawContent()
-                        drawRect(BrandGradient, blendMode = BlendMode.SrcAtop)
-                    }
-                }
-        )
-    }
-}
-
 @Composable
 fun GlassSearchBar(
     query: String,
@@ -148,7 +120,8 @@ fun GlassSearchBar(
     focused: Boolean,
     filterCount: Int,
     onOpenFilters: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    fieldModifier: Modifier = Modifier
 ) {
     val borderWidth by animateDpAsState(if (focused) 1.6.dp else 1.dp, label = "searchBorder")
     Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -174,7 +147,7 @@ fun GlassSearchBar(
                     cursorBrush = SolidColor(PurpleAccent),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                     keyboardActions = KeyboardActions(onSearch = { onSubmit() }),
-                    modifier = Modifier.fillMaxWidth().onFocusChanged { onFocusChange(it.isFocused) }
+                    modifier = fieldModifier.fillMaxWidth().onFocusChanged { onFocusChange(it.isFocused) }
                 )
             }
             AnimatedVisibility(visible = query.isNotEmpty(), enter = scaleIn() + fadeIn(), exit = scaleOut() + fadeOut()) {
@@ -436,10 +409,10 @@ private fun FeaturedSlide(manga: Manga, rank: Int, onOpen: () -> Unit, onPeek: (
                         RatingBadge(manga.rating)
                     }
                 }
-                GradientButton(onClick = onOpen) {
-                    Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                PrimaryButton(onClick = onOpen) {
+                    Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("Read now", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    Text("Read now", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                 }
             }
             Box(
@@ -564,8 +537,8 @@ fun FilterSheet(state: HomeState, repository: MangaRepository, onDismiss: () -> 
                 color = if (targets.isEmpty()) PinkAccent else TextMuted,
                 fontSize = 12.sp
             )
-            GradientButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
-                Text("Show results", color = Color.White, fontWeight = FontWeight.Bold)
+            PrimaryButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
+                Text("Show results", fontWeight = FontWeight.Bold)
             }
         }
     }

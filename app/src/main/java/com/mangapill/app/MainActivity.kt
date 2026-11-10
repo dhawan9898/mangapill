@@ -27,7 +27,9 @@ import com.mangapill.app.ui.navigation.AdaptiveAppScaffold
 import com.mangapill.app.ui.navigation.NavigationDestination
 import com.mangapill.app.ui.navigation.Routes
 import com.mangapill.app.ui.screens.details.MangaDetailsScreen
-import com.mangapill.app.ui.screens.history.HistoryScreen
+import com.mangapill.app.ui.screens.search.SearchScreen
+import com.mangapill.app.data.repository.HistoryEntry
+import com.mangapill.app.ui.navigation.navigateToTab
 import com.mangapill.app.ui.screens.home.HomeScreen
 import com.mangapill.app.ui.screens.home.HomeState
 import com.mangapill.app.ui.screens.library.LibraryScreen
@@ -54,6 +56,9 @@ class MainActivity : ComponentActivity() {
                 val readChapter: (Manga, Chapter) -> Unit = { m, ch ->
                     navController.navigate(Routes.reader(m.sourceId, m.id, ch.id, ch.chapterNumber))
                 }
+                val continueReading: (HistoryEntry) -> Unit = { e ->
+                    navController.navigate(Routes.reader(e.manga.sourceId, e.manga.id, e.chapterId, e.chapterNumber))
+                }
 
                 AdaptiveAppScaffold(navController = navController) {
                     NavHost(
@@ -71,9 +76,17 @@ class MainActivity : ComponentActivity() {
                                 repository = repository,
                                 onMangaSelect = openManga,
                                 onReadChapter = readChapter,
-                                onContinue = { e ->
-                                    navController.navigate(Routes.reader(e.manga.sourceId, e.manga.id, e.chapterId, e.chapterNumber))
-                                }
+                                onContinue = continueReading,
+                                onOpenSearch = { navController.navigateToTab(NavigationDestination.SEARCH) }
+                            )
+                        }
+
+                        composable(NavigationDestination.SEARCH.route) {
+                            SearchScreen(
+                                state = homeState,
+                                repository = repository,
+                                onMangaSelect = openManga,
+                                onReadChapter = readChapter
                             )
                         }
 
@@ -123,17 +136,8 @@ class MainActivity : ComponentActivity() {
                             )
                         }
 
-                        composable(NavigationDestination.BOOKMARKS.route) {
-                            LibraryScreen(repository = repository, onMangaSelect = openManga)
-                        }
-
-                        composable(NavigationDestination.HISTORY.route) {
-                            HistoryScreen(
-                                repository = repository,
-                                onContinue = { e ->
-                                    navController.navigate(Routes.reader(e.manga.sourceId, e.manga.id, e.chapterId, e.chapterNumber))
-                                }
-                            )
+                        composable(NavigationDestination.LIBRARY.route) {
+                            LibraryScreen(repository = repository, onMangaSelect = openManga, onContinue = continueReading)
                         }
 
                         composable(NavigationDestination.SETTINGS.route) {

@@ -1,5 +1,9 @@
 package com.mangapill.app.ui.components.glass
 
+import androidx.compose.foundation.border
+import com.mangapill.app.ui.theme.SelectBorder
+import com.mangapill.app.ui.theme.SelectFill
+
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -43,7 +47,7 @@ fun rememberPressScale(interaction: MutableInteractionSource, pressedScale: Floa
     return scale
 }
 
-/** Pill chip: frosted glass when idle, brand gradient when selected. */
+/** Pill chip: frosted glass when idle, the brighter frosted lens when selected (as in AniStream). */
 @Composable
 fun GlassChip(
     label: String,
@@ -59,7 +63,7 @@ fun GlassChip(
         when {
             !enabled -> TextSecondary.copy(alpha = 0.4f)
             selected -> Color.White
-            else -> TextSecondary
+            else -> TextPrimary.copy(alpha = 0.85f)
         },
         label = "chipText"
     )
@@ -67,7 +71,10 @@ fun GlassChip(
     Row(
         modifier = modifier
             .graphicsLayer { scaleX = scale; scaleY = scale }
-            .then(if (selected) Modifier.clip(shape).background(BrandGradient, shape) else Modifier.liquidGlass(shape, 0.05f))
+            .then(
+                if (selected) Modifier.clip(shape).background(SelectFill, shape).border(1.dp, SelectBorder, shape)
+                else Modifier.liquidGlass(shape, 0.05f, base = Color(0x4D000000))
+            )
             .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -100,6 +107,35 @@ fun GradientButton(
         horizontalArrangement = Arrangement.Center,
         content = content
     )
+}
+
+/**
+ * The main action on a page ("Start reading", "Read now"): white with dark content, like the
+ * Play button in AniStream and CineStream. Text and icons inside take the dark colour by default.
+ */
+@Composable
+fun PrimaryButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    content: @Composable RowScope.() -> Unit
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val scale = rememberPressScale(interaction, 0.96f)
+    val shape = RoundedCornerShape(16.dp)
+    androidx.compose.runtime.CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides Color.Black) {
+        Row(
+            modifier = modifier
+                .graphicsLayer { scaleX = scale; scaleY = scale; alpha = if (enabled) 1f else 0.6f }
+                .clip(shape)
+                .background(Color.White, shape)
+                .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = onClick)
+                .padding(horizontal = 18.dp, vertical = 13.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+            content = content
+        )
+    }
 }
 
 /** Round frosted icon button. */

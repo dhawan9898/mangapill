@@ -1,5 +1,6 @@
 package com.mangapill.app.data.prefs
 
+import com.mangapill.app.data.model.ReaderMode
 import android.content.Context
 import com.mangapill.app.data.opds.OpdsServer
 import com.mangapill.app.data.scraper.SourceRegistry
@@ -7,7 +8,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-/** Small user settings: OPDS servers, which sources are enabled and recent searches. */
+/** Small user settings: OPDS servers, enabled sources, recent searches and reader preferences. */
 class AppPrefs(context: Context) {
     private val sp = context.getSharedPreferences("mangapill_prefs", Context.MODE_PRIVATE)
 
@@ -63,6 +64,34 @@ class AppPrefs(context: Context) {
         sp.edit().putString(KEY_OPDS, OpdsServer.listToJson(list)).apply()
     }
 
+    private val _readerMode = MutableStateFlow(
+        ReaderMode.entries.firstOrNull { it.name == sp.getString(KEY_READER_MODE, null) } ?: ReaderMode.WEBTOON
+    )
+    /** The reading mode last chosen; every chapter opens in it. */
+    val readerMode: StateFlow<ReaderMode> = _readerMode.asStateFlow()
+
+    fun setReaderMode(mode: ReaderMode) {
+        _readerMode.value = mode
+        sp.edit().putString(KEY_READER_MODE, mode.name).apply()
+    }
+
+    private val _keepScreenOn = MutableStateFlow(sp.getBoolean(KEY_KEEP_SCREEN_ON, true))
+    val keepScreenOn: StateFlow<Boolean> = _keepScreenOn.asStateFlow()
+
+    fun setKeepScreenOn(on: Boolean) {
+        _keepScreenOn.value = on
+        sp.edit().putBoolean(KEY_KEEP_SCREEN_ON, on).apply()
+    }
+
+    private val _tapToTurn = MutableStateFlow(sp.getBoolean(KEY_TAP_TO_TURN, true))
+    /** Paged modes: tapping the left / right edge turns the page; the middle shows the controls. */
+    val tapToTurn: StateFlow<Boolean> = _tapToTurn.asStateFlow()
+
+    fun setTapToTurn(on: Boolean) {
+        _tapToTurn.value = on
+        sp.edit().putBoolean(KEY_TAP_TO_TURN, on).apply()
+    }
+
     private fun loadRecents(): List<String> =
         sp.getString(KEY_RECENTS, null)?.split('\n')?.filter { it.isNotBlank() }.orEmpty()
 
@@ -83,6 +112,9 @@ class AppPrefs(context: Context) {
         const val KEY_ENABLED = "enabled_sources"
         const val KEY_RECENTS = "recent_searches"
         const val KEY_OPDS = "opds_servers"
+        const val KEY_READER_MODE = "reader_mode"
+        const val KEY_KEEP_SCREEN_ON = "keep_screen_on"
+        const val KEY_TAP_TO_TURN = "tap_to_turn"
         const val MAX_RECENTS = 8
     }
 }

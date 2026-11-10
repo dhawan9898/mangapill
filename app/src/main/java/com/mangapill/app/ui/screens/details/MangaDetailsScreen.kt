@@ -22,7 +22,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.CheckCircle
@@ -67,7 +67,7 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import com.mangapill.app.ui.components.glass.GlassIconButton
-import com.mangapill.app.ui.components.glass.GradientButton
+import com.mangapill.app.ui.components.glass.PrimaryButton
 import com.mangapill.app.ui.components.glass.liquidGlass
 import com.mangapill.app.ui.components.manga.StatusTag
 import com.mangapill.app.ui.components.RatingBadge
@@ -162,12 +162,12 @@ fun MangaDetailsScreen(
                     Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             val target = remember(chapters, progress) { pickStartChapter(chapters, progress?.chapterId) }
-                            GradientButton(
+                            PrimaryButton(
                                 onClick = { target?.let(onChapterSelect) },
                                 enabled = target != null,
                                 modifier = Modifier.weight(1f)
                             ) {
-                                Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+                                Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(20.dp))
                                 Spacer(Modifier.width(6.dp))
                                 Text(
                                     text = when {
@@ -175,7 +175,6 @@ fun MangaDetailsScreen(
                                         progress != null -> "Resume Ch. ${formatChapterNumber(progress!!.chapterNumber)}"
                                         else -> "Start reading"
                                     },
-                                    color = Color.White,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
@@ -303,7 +302,7 @@ fun MangaDetailsScreen(
 
         // Floating back button, above everything else.
         GlassIconButton(
-            icon = Icons.Default.ArrowBack,
+            icon = Icons.AutoMirrored.Filled.ArrowBack,
             contentDescription = "Back",
             onClick = onBack,
             modifier = Modifier.statusBarsPadding().padding(10.dp)

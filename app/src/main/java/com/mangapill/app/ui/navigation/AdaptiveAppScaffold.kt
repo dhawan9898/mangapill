@@ -1,6 +1,24 @@
 package com.mangapill.app.ui.navigation
 
 import android.net.Uri
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.outlined.CollectionsBookmark
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import com.mangapill.app.ui.theme.SelectBorder
+import com.mangapill.app.ui.theme.SelectFill
+import com.mangapill.app.ui.theme.TextPrimary
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -33,10 +51,6 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -58,7 +72,6 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
-import com.mangapill.app.ui.components.glass.BrandGradient
 import com.mangapill.app.ui.components.glass.LiquidBackground
 import com.mangapill.app.ui.components.glass.liquidGlass
 import com.mangapill.app.ui.theme.GlassDark
@@ -74,11 +87,21 @@ object Routes {
         "reader?src=${Uri.encode(src)}&manga=${Uri.encode(manga)}&chapter=${Uri.encode(chapter)}&num=$num"
 }
 
+/** The four tabs, in the same order as AniStream and CineStream: Home, Search, Library, Settings. */
 enum class NavigationDestination(val route: String, val label: String, val icon: ImageVector) {
-    HOME("home", "Home", Icons.Default.Home),
-    BOOKMARKS("bookmarks", "Library", Icons.Default.Bookmark),
-    HISTORY("history", "History", Icons.Default.History),
-    SETTINGS("settings", "Settings", Icons.Default.Settings)
+    HOME("home", "Home", Icons.Outlined.Home),
+    SEARCH("search", "Search", Icons.Outlined.Search),
+    LIBRARY("library", "Library", Icons.Outlined.CollectionsBookmark),
+    SETTINGS("settings", "Settings", Icons.Outlined.Settings)
+}
+
+/** Switches tab keeping each tab's own back stack and state, as the bottom bar does. */
+fun NavHostController.navigateToTab(destination: NavigationDestination) {
+    navigate(destination.route) {
+        popUpTo(graph.findStartDestination().id) { saveState = true }
+        launchSingleTop = true
+        restoreState = true
+    }
 }
 
 /** Height reserved at the bottom of scrollable content for the floating navigation bar. */
@@ -100,13 +123,7 @@ fun AdaptiveAppScaffold(
     // The bar belongs to the top-level tabs only; details and the reader are immersive.
     val showBar = currentRoute == null || NavigationDestination.entries.any { it.route == currentRoute }
 
-    val navigate: (NavigationDestination) -> Unit = { destination ->
-        navController.navigate(destination.route) {
-            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-            launchSingleTop = true
-            restoreState = true
-        }
-    }
+    val navigate: (NavigationDestination) -> Unit = { destination -> navController.navigateToTab(destination) }
 
     Box(Modifier.fillMaxSize()) {
         LiquidBackground()
@@ -134,52 +151,70 @@ fun AdaptiveAppScaffold(
     }
 }
 
-/** Floating pill navigation bar; the selected tab grows into a gradient capsule with a spring. */
+/**
+ * Floating liquid-glass dock (streamkit's Dock): every tab shows its icon and label, and a frosted
+ * lens - not a brand-coloured fill - slides under the selected one with a slight overshoot.
+ */
 @Composable
 private fun GlassNavBar(currentRoute: String?, onSelect: (NavigationDestination) -> Unit) {
-    Row(
+    val tabs = NavigationDestination.entries
+    val selectedIndex = tabs.indexOfFirst { it.route == currentRoute }.coerceAtLeast(0)
+    val haptics = LocalHapticFeedback.current
+    BoxWithConstraints(
         modifier = Modifier
             .navigationBarsPadding()
-            .padding(horizontal = 20.dp, vertical = 10.dp)
+            .padding(horizontal = 16.dp, vertical = 10.dp)
             .fillMaxWidth()
             .height(64.dp)
-            .liquidGlass(RoundedCornerShape(32.dp), 0.08f, base = GlassDark)
-            .padding(horizontal = 8.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly,
-        verticalAlignment = Alignment.CenterVertically
+            .liquidGlass(RoundedCornerShape(32.dp), 0.06f, base = GlassDark)
+            .padding(6.dp)
     ) {
-        NavigationDestination.entries.forEach { d ->
-            NavPill(d, selected = currentRoute == d.route || (currentRoute == null && d == NavigationDestination.HOME)) { onSelect(d) }
-        }
-    }
-}
-
-@Composable
-private fun NavPill(destination: NavigationDestination, selected: Boolean, onClick: () -> Unit) {
-    val progress by animateFloatAsState(
-        targetValue = if (selected) 1f else 0f,
-        animationSpec = spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMediumLow),
-        label = "navPill"
-    )
-    val shape = RoundedCornerShape(24.dp)
-    Row(
-        modifier = Modifier
-            .clip(shape)
-            .then(if (selected) Modifier.background(BrandGradient, shape) else Modifier)
-            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            destination.icon,
-            contentDescription = destination.label,
-            tint = if (selected) Color.White else TextMuted,
-            modifier = Modifier.size(22.dp).graphicsLayer { scaleX = 1f + 0.1f * progress; scaleY = 1f + 0.1f * progress }
+        val slot = maxWidth / tabs.size
+        val lensX by animateDpAsState(
+            targetValue = slot * selectedIndex,
+            animationSpec = spring(dampingRatio = 0.62f, stiffness = Spring.StiffnessMediumLow),
+            label = "dockLens"
         )
-        AnimatedVisibility(visible = selected, enter = fadeIn() + expandHorizontally(), exit = fadeOut() + shrinkHorizontally()) {
-            Row {
-                Spacer(Modifier.width(6.dp))
-                Text(destination.label, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+        Box(
+            Modifier
+                .offset(x = lensX)
+                .width(slot)
+                .fillMaxHeight()
+                .clip(CircleShape)
+                .background(SelectFill)
+                .border(1.dp, SelectBorder, CircleShape)
+        )
+        Row(Modifier.fillMaxSize()) {
+            tabs.forEachIndexed { i, d ->
+                val selected = i == selectedIndex
+                val tint by animateColorAsState(if (selected) TextPrimary else TextMuted, label = "dockTint")
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clip(CircleShape)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            role = Role.Tab
+                        ) {
+                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onSelect(d)
+                        }
+                        .semantics { this.selected = selected },
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Icon(d.icon, contentDescription = null, tint = tint, modifier = Modifier.size(22.dp))
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        d.label,
+                        color = tint,
+                        fontSize = 10.sp,
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                        maxLines = 1
+                    )
+                }
             }
         }
     }
@@ -193,25 +228,26 @@ private fun GlassRail(currentRoute: String?, onSelect: (NavigationDestination) -
             .statusBarsPadding()
             .navigationBarsPadding()
             .padding(12.dp)
-            .width(76.dp)
-            .liquidGlass(RoundedCornerShape(28.dp), 0.07f, base = GlassDark)
-            .padding(vertical = 16.dp),
+            .width(80.dp)
+            .liquidGlass(RoundedCornerShape(28.dp), 0.06f, base = GlassDark)
+            .padding(vertical = 16.dp, horizontal = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         NavigationDestination.entries.forEach { d ->
             val selected = currentRoute == d.route || (currentRoute == null && d == NavigationDestination.HOME)
             val shape = RoundedCornerShape(18.dp)
             Column(
                 Modifier
+                    .fillMaxWidth()
                     .clip(shape)
-                    .then(if (selected) Modifier.background(BrandGradient, shape) else Modifier)
-                    .clickable { onSelect(d) }
-                    .padding(horizontal = 8.dp, vertical = 10.dp),
+                    .then(if (selected) Modifier.background(SelectFill, shape).border(1.dp, SelectBorder, shape) else Modifier)
+                    .clickable(role = Role.Tab) { onSelect(d) }
+                    .padding(vertical = 10.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Icon(d.icon, contentDescription = d.label, tint = if (selected) Color.White else TextMuted)
-                Text(d.label, color = if (selected) Color.White else TextMuted, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                Icon(d.icon, contentDescription = null, tint = if (selected) TextPrimary else TextMuted)
+                Text(d.label, color = if (selected) TextPrimary else TextMuted, fontSize = 10.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
             }
         }
     }

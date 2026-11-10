@@ -99,7 +99,13 @@ enum class BookmarkStatus {
     DROPPED
 }
 
-enum class ReaderMode {
-    WEBTOON,
-    MANGA_HORIZONTAL
+enum class ReaderMode(val label: String) {
+    /** One long vertical strip (webtoons, manhwa). */
+    WEBTOON("Webtoon"),
+    /** One page at a time, swiping left to go forward. */
+    MANGA_HORIZONTAL("Paged"),
+    /** One page at a time, right to left, the way Japanese manga is read. */
+    MANGA_RTL("Right to left");
+
+    fun next(): ReaderMode = entries[(ordinal + 1) % entries.size]
 }

@@ -26,3 +26,17 @@ val TextMuted = Color(0xFF6F6F7B)
 val CyanAccent = Color(0xFFFF3B45)
 val PinkAccent = Color(0xFFF59E0B)
 val GlassDark = Color(0xE60B0B0D)
+
+// Shared with AniStream / CineStream (index.css): selection lens, hairlines, toggles, icon tiles.
+/** Frosted "lens" behind a selected tab / segment (--select-bg / --select-border). */
+val SelectFill = Color(0x29FFFFFF)
+val SelectBorder = Color(0x47FFFFFF)
+/** Hairline dividers and card borders (--border-subtle). */
+val BorderSubtle = Color(0x14FFFFFF)
+/** Tinted square behind a setting's icon (--accent-soft). */
+val AccentSoft = Color(0x24E50914)
+/** iOS-style "on" switch track, as in the other two apps. */
+val ToggleOn = Color(0xFF34C759)
+val TrackOff = Color(0x17FFFFFF)
+/** Plain surface for secondary pill buttons (--bg-surface). */
+val Surface = OledSurface

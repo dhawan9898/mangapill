@@ -1,5 +1,6 @@
 package com.mangapill.app.ui.screens.home
 
+import com.mangapill.app.data.ErrorText
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
@@ -172,7 +173,7 @@ class HomeState(
                     if (r.items.isNotEmpty()) first = false
                 }
                 searchPending = !r.done
-                if (r.done && r.items.isEmpty() && r.failures.isNotEmpty()) searchError = r.failures.joinToString("\n")
+                if (r.done && r.items.isEmpty() && r.failures.isNotEmpty()) searchError = ErrorText.summarize(r.failures)
             }.onFailure { searchError = friendlyError(it) }
             searchPending = false
         }
@@ -194,7 +195,7 @@ class HomeState(
             rows.joinAll()
             dashboardLoading = false
             if (trending.isEmpty() && latest.isEmpty()) {
-                dashboardError = failures.distinct().joinToString("\n").ifBlank { "Nothing to show right now." }
+                dashboardError = ErrorText.summarize(failures).ifBlank { "Nothing to show right now." }
             }
         }
     }

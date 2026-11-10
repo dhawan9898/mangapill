@@ -1,5 +1,14 @@
 package com.mangapill.app.ui.screens.reader
 
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.material.icons.filled.SwapHoriz
+import kotlinx.coroutines.launch
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -24,7 +33,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CloudOff
@@ -87,7 +96,14 @@ fun DualModeReaderScreen(
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var reloadTick by remember { mutableIntStateOf(0) }
-    var readerMode by remember { mutableStateOf(ReaderMode.WEBTOON) }
+    // The mode is remembered across chapters and app restarts.
+    val readerMode by repository.prefs.readerMode.collectAsState()
+    val keepScreenOn by repository.prefs.keepScreenOn.collectAsState()
+    val tapToTurn by repository.prefs.tapToTurn.collectAsState()
+    val paged = readerMode != ReaderMode.WEBTOON
+    val rtl = readerMode == ReaderMode.MANGA_RTL
+    // Set by the pager branch: turns one page forward (+1) or back (-1) in reading order.
+    var turnPage by remember { mutableStateOf<(Int) -> Unit>({}) }
     var showControls by remember { mutableStateOf(true) }
     var currentPage by remember { mutableIntStateOf(1) }
     val zoom = rememberZoomState()
@@ -119,6 +135,32 @@ fun DualModeReaderScreen(
     val previousChapter = if (index >= 0 && index < chapters.lastIndex) chapters[index + 1] else null
 
     val context = LocalContext.current
+    val view = LocalView.current
+    DisposableEffect(keepScreenOn) {
+        view.keepScreenOn = keepScreenOn
+        onDispose { view.keepScreenOn = false }
+    }
+    // Full screen while reading: the status and navigation bars leave with the reader's own
+    // controls (a swipe from the edge peeks them), and always come back when the reader closes.
+    val window = (view.context as? android.app.Activity)?.window
+    DisposableEffect(showControls, window) {
+        val controller = window?.let { androidx.core.view.WindowCompat.getInsetsController(it, view) }
+        controller?.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        val bars = androidx.core.view.WindowInsetsCompat.Type.systemBars()
+        if (showControls) controller?.show(bars) else controller?.hide(bars)
+        onDispose { controller?.show(bars) }
+    }
+    // In paged modes the outer thirds turn the page (respecting right-to-left); the middle, or any
+    // tap in webtoon mode, shows and hides the controls.
+    val onTap by rememberUpdatedState { at: Offset, size: IntSize ->
+        val third = size.width / 3f
+        when {
+            !paged || !tapToTurn || zoom.isZoomed -> showControls = !showControls
+            at.x < third -> turnPage(if (rtl) 1 else -1)
+            at.x > size.width - third -> turnPage(if (rtl) -1 else 1)
+            else -> showControls = !showControls
+        }
+    }
 
     // Pre-fetch the next few pages so page turns are instant.
     LaunchedEffect(pages, currentPage) {
@@ -161,7 +203,7 @@ fun DualModeReaderScreen(
       Box(
         Modifier
             .fillMaxSize()
-            .zoomable(zoom, onTap = { showControls = !showControls }, onOverflow = { overflowHandler(it) })
+            .zoomable(zoom, onTap = { at, size -> onTap(at, size) }, onOverflow = { overflowHandler(it) })
       ) {
         when {
             loading -> CircularProgressIndicator(color = PurpleAccent, modifier = Modifier.align(Alignment.Center))
@@ -196,18 +238,36 @@ fun DualModeReaderScreen(
             }
 
             else -> {
-                val pagerState = rememberPagerState(initialPage = (currentPage - 1).coerceIn(0, pages.lastIndex)) { pages.size }
+                // One extra page after the last: the "next chapter" card, as at the end of a webtoon.
+                val pageCount = pages.size + 1
+                val pagerState = rememberPagerState(initialPage = (currentPage - 1).coerceIn(0, pages.lastIndex)) { pageCount }
+                val pagerScope = rememberCoroutineScope()
                 LaunchedEffect(pagerState, pages) {
-                    snapshotFlow { pagerState.currentPage }.distinctUntilChanged().collect { currentPage = it + 1 }
+                    snapshotFlow { pagerState.currentPage }.distinctUntilChanged().collect { currentPage = (it + 1).coerceAtMost(pages.size) }
                 }
                 SideEffect {
-                    overflowHandler = { o -> pagerState.dispatchRawDelta(-o.x) }
+                    // Right to left the layout is mirrored, so a finger moving left goes back.
+                    overflowHandler = { o -> pagerState.dispatchRawDelta(if (rtl) o.x else -o.x) }
+                    turnPage = { step ->
+                        val target = (pagerState.currentPage + step).coerceIn(0, pageCount - 1)
+                        if (target != pagerState.currentPage) pagerScope.launch { pagerState.animateScrollToPage(target) }
+                    }
                 }
                 LaunchedEffect(pagerState) {
                     snapshotFlow { pagerState.settledPage }.distinctUntilChanged().collect { zoom.reset() }
                 }
-                HorizontalPager(state = pagerState, userScrollEnabled = !zoom.isZoomed, modifier = Modifier.fillMaxSize()) { i ->
-                    PageImageView(pages[i], ContentScale.Fit, Modifier.fillMaxSize(), minHeight = 0)
+                HorizontalPager(
+                    state = pagerState,
+                    reverseLayout = rtl,
+                    userScrollEnabled = !zoom.isZoomed,
+                    beyondBoundsPageCount = 1,
+                    modifier = Modifier.fillMaxSize()
+                ) { i ->
+                    if (i < pages.size) {
+                        PageImageView(pages[i], ContentScale.Fit, Modifier.fillMaxSize(), minHeight = 0)
+                    } else {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { ChapterEndCard(nextChapter, onOpenChapter) }
+                    }
                 }
             }
         }
@@ -231,7 +291,7 @@ fun DualModeReaderScreen(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = TextPrimary)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextPrimary)
                     }
                     Text(
                         text = "Chapter ${formatChapterNumber(chapterNumber)}",
@@ -246,15 +306,15 @@ fun DualModeReaderScreen(
                         .background(Color.White.copy(alpha = 0.15f))
                         .clickable {
                             zoom.reset()
-                            readerMode = if (readerMode == ReaderMode.WEBTOON) ReaderMode.MANGA_HORIZONTAL else ReaderMode.WEBTOON
+                            repository.prefs.setReaderMode(readerMode.next())
                         }
                         .padding(horizontal = 12.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Icon(Icons.Default.SwapVert, contentDescription = "Switch mode", tint = PurpleAccent, modifier = Modifier.size(16.dp))
+                    Icon(if (paged) Icons.Default.SwapHoriz else Icons.Default.SwapVert, contentDescription = "Reading mode", tint = PurpleAccent, modifier = Modifier.size(16.dp))
                     Text(
-                        text = if (readerMode == ReaderMode.WEBTOON) "Webtoon" else "Paged",
+                        text = readerMode.label,
                         color = TextPrimary,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold

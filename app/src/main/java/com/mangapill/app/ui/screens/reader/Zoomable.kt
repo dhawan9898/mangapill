@@ -74,12 +74,13 @@ fun rememberZoomState() = remember { ZoomState() }
  */
 fun Modifier.zoomable(
     state: ZoomState,
-    onTap: () -> Unit = {},
+    /** Where the tap landed and the size of the reader, so edges can turn pages. */
+    onTap: (Offset, IntSize) -> Unit = { _, _ -> },
     onOverflow: (Offset) -> Unit = {}
 ): Modifier = this
     .pointerInput(state) {
         detectTapGestures(
-            onTap = { onTap() },
+            onTap = { onTap(it, size) },
             onDoubleTap = { state.toggle(it, size) }
         )
     }

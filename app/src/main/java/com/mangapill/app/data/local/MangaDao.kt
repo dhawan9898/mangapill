@@ -41,6 +41,9 @@ interface HistoryDao {
 
     @Query("DELETE FROM reading_history")
     suspend fun clearHistory()
+
+    @Query("DELETE FROM reading_history WHERE mangaId = :mangaId")
+    suspend fun deleteHistory(mangaId: String)
 }
 
 @Dao
@@ -59,4 +62,7 @@ interface BookmarkDao {
 
     @Query("SELECT m.* FROM mangas m INNER JOIN bookmarks b ON m.id = b.mangaId ORDER BY b.addedAt DESC")
     fun getBookmarkedMangas(): Flow<List<MangaEntity>>
+
+    @Query("DELETE FROM bookmarks")
+    suspend fun clearBookmarks()
 }

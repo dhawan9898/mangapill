@@ -153,7 +153,7 @@ class MangaRepository(private val db: AppDatabase, val prefs: AppPrefs) {
                         answered[source.sourceId] = it
                         cooldown.remove(source.sourceId)
                     }.onFailure {
-                        failures += "${source.sourceName}: ${it.message ?: it.javaClass.simpleName}"
+                        failures += "${source.sourceName}: ${com.mangapill.app.data.ErrorText.describe(it)}"
                         if (!singleSource) cooldown[source.sourceId] = System.currentTimeMillis() + COOLDOWN_MS
                     }
                     val merged = interleave(healthy.mapNotNull { answered[it.sourceId] })
@@ -285,6 +285,11 @@ class MangaRepository(private val db: AppDatabase, val prefs: AppPrefs) {
     }
 
     suspend fun clearHistory() = db.historyDao().clearHistory()
+
+    /** Forgets one title's reading progress (the History list's remove button). */
+    suspend fun removeFromHistory(manga: Manga) = db.historyDao().deleteHistory(manga.key)
+
+    suspend fun clearLibrary() = db.bookmarkDao().clearBookmarks()
 
     // --- Bookmarks ------------------------------------------------------------------------------
 

@@ -59,7 +59,7 @@ import com.mangapill.app.ui.components.MangaCover
 import com.mangapill.app.ui.components.RatingBadge
 import com.mangapill.app.ui.components.SourceBadge
 import com.mangapill.app.ui.components.glass.GlassIconButton
-import com.mangapill.app.ui.components.glass.GradientButton
+import com.mangapill.app.ui.components.glass.PrimaryButton
 import com.mangapill.app.ui.components.glass.liquidGlass
 import com.mangapill.app.ui.components.shimmer
 import com.mangapill.app.ui.components.sourceLabel
@@ -218,8 +218,8 @@ fun IntroCard(
         Spacer(Modifier.height(16.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             val target = chapters?.let { pickStartChapter(it, progress?.chapterId) }
-            GradientButton(onClick = { target?.let(onChapter) }, enabled = target != null, modifier = Modifier.weight(1f)) {
-                Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+            PrimaryButton(onClick = { target?.let(onChapter) }, enabled = target != null, modifier = Modifier.weight(1f)) {
+                Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(6.dp))
                 Text(
                     when {
@@ -228,7 +228,6 @@ fun IntroCard(
                         progress != null -> "Resume Ch. ${formatChapterNumber(progress.chapterNumber)}"
                         else -> "Start reading"
                     },
-                    color = Color.White,
                     fontWeight = FontWeight.Bold
                 )
             }
