@@ -167,23 +167,9 @@ class MangaRepository(private val db: AppDatabase, val prefs: AppPrefs) {
         }
     }
 
-    /** Round-robin merge so every source is represented near the top; drops cross-source duplicates. */
-    private fun interleave(lists: List<List<Manga>>): List<Manga> {
-        if (lists.size == 1) return lists[0]
-        val out = ArrayList<Manga>()
-        val seen = HashSet<String>()
-        var i = 0
-        while (lists.any { i < it.size }) {
-            for (list in lists) {
-                val m = list.getOrNull(i) ?: continue
-                if (seen.add(normalize(m.title))) out.add(m)
-            }
-            i++
-        }
-        return out
-    }
+    private fun interleave(lists: List<List<Manga>>): List<Manga> = interleaveSources(lists)
 
-    private fun normalize(title: String) = title.lowercase().filter { it.isLetterOrDigit() }
+    private fun normalize(title: String) = normalizeTitle(title)
 
     private fun modeKey(sourceId: String?) = sourceId ?: ("all[" + prefs.enabledSources.value.sorted().joinToString(",") + "]")
 

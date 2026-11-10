@@ -121,3 +121,99 @@ class ScraperParsingTest {
         assertEquals(2, mangadex.parseMangaList(JSONObject("""{"data":[{"id":"a","attributes":{}},{"id":"b","attributes":{}}]}""")).size)
     }
 }
+
+class OtherScraperParsingTest {
+    private val reaper = com.mangapill.app.data.scraper.ReaperScansScraper()
+    private val kakalot = com.mangapill.app.data.scraper.MangaKakalotScraper()
+    private val comick = com.mangapill.app.data.scraper.ComickScraper()
+
+    private fun doc(html: String, base: String) = Jsoup.parse(html, base)
+
+    @Test
+    fun themesiaCardsKeepSameSiteLinksOnly() {
+        val cards = reaper.parseCards(doc("""
+            <div class="bs"><div class="bsx"><a href="https://reaperscans.com/series/solo-leveling/" title="t"><img data-src="/c.jpg"><div class="tt">Solo Leveling</div></a></div></div>
+            <div class="bs"><div class="bsx"><a href="https://evil.example/series/other/"><div class="tt">Elsewhere</div></a></div></div>
+            <div class="bs"><div class="bsx"><a href="https://reaperscans.com/series/solo-leveling/"><div class="tt">Solo Leveling</div></a></div></div>
+        """.trimIndent(), "https://reaperscans.com/"))
+
+        val card = cards.single()
+        assertEquals("series/solo-leveling", card.id)
+        assertEquals("Solo Leveling", card.title)
+        assertEquals("https://reaperscans.com/c.jpg", card.coverImage)
+        assertEquals("reaperscans", card.sourceId)
+    }
+
+    @Test
+    fun themesiaChaptersUseDataNumThenTextAndSortNewestFirst() {
+        val rows = doc("""
+            <ul>
+              <li data-num="12"><a href="/series/x/chapter-12/"><span class="chapternum">Chapter 12</span></a><span class="chapterdate">Jan 1</span></li>
+              <li><a href="/series/x/chapter-3/">Chapter 3</a></li>
+              <li><a href="/series/x/chapter-3/">Chapter 3</a></li>
+            </ul>
+        """.trimIndent(), "https://reaperscans.com/").select("li")
+
+        val chapters = reaper.parseChapters("series/x", rows)
+
+        assertEquals(listOf(12f, 3f), chapters.map { it.chapterNumber })
+        assertEquals("Jan 1", chapters.first().releaseDate)
+        assertEquals("series/x/chapter-12", chapters.first().id)
+    }
+
+    @Test
+    fun themesiaPagesComeFromTheDomOrFromTheTsReaderScript() {
+        val dom = reaper.parsePages(doc("""<div id="readerarea"><img src="https://cdn.test/a.jpg"><img src="https://cdn.test/b.jpg"></div>""", "https://reaperscans.com/"))
+        assertEquals(listOf("https://cdn.test/a.jpg", "https://cdn.test/b.jpg"), dom.map { it.imageUrl })
+
+        val script = reaper.parsePages(doc("""
+            <div id="readerarea"></div>
+            <script>ts_reader.run({"sources":[{"images":["https://cdn.test/1.jpg","https://cdn.test/2.jpg"]}]});</script>
+        """.trimIndent(), "https://reaperscans.com/"))
+        assertEquals(listOf(1, 2), script.map { it.pageNumber })
+        assertEquals(listOf("https://cdn.test/1.jpg", "https://cdn.test/2.jpg"), script.map { it.imageUrl })
+    }
+
+    @Test
+    fun themesiaPagesWithNothingReadableAreEmptyNotACrash() {
+        assertEquals(emptyList<Any>(), reaper.parsePages(doc("<html><body>blocked</body></html>", "https://reaperscans.com/")))
+        // A broken script payload is ignored.
+        assertEquals(emptyList<Any>(), reaper.parsePages(doc("""<script>ts_reader.run({"sources":[});</script>""", "https://reaperscans.com/")))
+    }
+
+    @Test
+    fun kakalotCardsUseTheStoryNameAndAbsoluteUrls() {
+        val cards = kakalot.parseCards(doc("""
+            <div class="list-truyen-item-wrap"><a href="/manga/abc" title="fallback"><img src="https://c.test/x.jpg"></a><h3><a href="/manga/abc">Manga ABC</a></h3></div>
+            <div class="story_item"><a href="https://mangakakalot.com/manga/def"></a></div>
+        """.trimIndent(), "https://mangakakalot.com/"))
+
+        assertEquals(listOf("https://mangakakalot.com/manga/abc", "https://mangakakalot.com/manga/def"), cards.map { it.id })
+        assertEquals("Manga ABC", cards[0].title)
+        assertEquals("https://c.test/x.jpg", cards[0].coverImage)
+        assertEquals("Def", cards[1].title) // no title anywhere: readable slug
+    }
+
+    @Test
+    fun comickMangaReadsCoverGenresStatusAndRating() {
+        val manga = comick.parseManga(org.json.JSONObject("""
+            {"hid":"h1","slug":"solo-leveling","title":"Solo Leveling","desc":" Hunters. ","status":1,"bayesian_rating":"8.5",
+             "md_covers":[{"b2key":"abc.jpg"}],
+             "md_comic_md_genres":[{"md_genres":{"name":"Action"}},{"md_genres":{"name":"Fantasy"}}]}
+        """.trimIndent()))
+
+        assertEquals("h1", manga.id)
+        assertEquals("Hunters.", manga.synopsis)
+        assertEquals(MangaStatus.ONGOING, manga.status)
+        assertEquals(8.5f, manga.rating, 0.001f)
+        assertEquals(listOf("Action", "Fantasy"), manga.genres)
+        assertEquals("https://meo.comick.pictures/abc.jpg", manga.coverImage)
+    }
+
+    @Test
+    fun comickListSkipsEntriesItCannotRead() {
+        val list = comick.parseList(org.json.JSONArray("""[{"hid":"a","slug":"a"},{},{"slug":"c","title":null}]"""))
+        assertEquals(listOf("a", "c"), list.map { it.id })
+        assertEquals("C", list[1].title) // null title: readable slug
+    }
+}
