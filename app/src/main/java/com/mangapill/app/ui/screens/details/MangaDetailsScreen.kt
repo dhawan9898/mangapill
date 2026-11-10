@@ -199,7 +199,7 @@ fun MangaDetailsScreen(
                                         fontWeight = FontWeight.Medium,
                                         modifier = Modifier
                                             .clip(RoundedCornerShape(8.dp))
-                                            .background(Color.White.copy(alpha = 0.08f))
+                                            .background(com.mangapill.app.ui.theme.TrackOff)
                                             .padding(horizontal = 10.dp, vertical = 4.dp)
                                     )
                                 }
@@ -261,7 +261,7 @@ fun MangaDetailsScreen(
                                 shape = RoundedCornerShape(12.dp),
                                 colors = OutlinedTextFieldDefaults.colors(
                                     focusedBorderColor = PurpleAccent,
-                                    unfocusedBorderColor = Color.White.copy(alpha = 0.15f),
+                                    unfocusedBorderColor = TextMuted.copy(alpha = 0.35f),
                                     focusedTextColor = TextPrimary,
                                     unfocusedTextColor = TextPrimary,
                                     cursorColor = PurpleAccent
@@ -327,7 +327,10 @@ private fun Hero(manga: Manga) {
                 }
         ) {
             MangaCover(manga, Modifier.fillMaxSize().blur(22.dp), alpha = 0.55f)
-            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)))
+            // Darkens the blurred cover on the dark themes, washes it out on the light one, so the
+            // title under it always reads.
+            val light = com.mangapill.app.ui.theme.LocalPalette.current.isLight
+            Box(Modifier.fillMaxSize().background(if (light) Color.White.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.35f)))
         }
         Row(
             modifier = Modifier.align(Alignment.BottomStart).padding(horizontal = 16.dp),

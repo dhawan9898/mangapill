@@ -62,7 +62,7 @@ fun GlassChip(
     val textColor by animateColorAsState(
         when {
             !enabled -> TextSecondary.copy(alpha = 0.4f)
-            selected -> Color.White
+            selected -> TextPrimary
             else -> TextPrimary.copy(alpha = 0.85f)
         },
         label = "chipText"
@@ -123,12 +123,16 @@ fun PrimaryButton(
     val interaction = remember { MutableInteractionSource() }
     val scale = rememberPressScale(interaction, 0.96f)
     val shape = RoundedCornerShape(16.dp)
-    androidx.compose.runtime.CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides Color.Black) {
+    // White on the dark themes, ink on the light one, so it is always the strongest thing on the page.
+    val light = com.mangapill.app.ui.theme.LocalPalette.current.isLight
+    val fill = if (light) TextPrimary else Color.White
+    val ink = if (light) Color.White else Color.Black
+    androidx.compose.runtime.CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides ink) {
         Row(
             modifier = modifier
                 .graphicsLayer { scaleX = scale; scaleY = scale; alpha = if (enabled) 1f else 0.6f }
                 .clip(shape)
-                .background(Color.White, shape)
+                .background(fill, shape)
                 .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = onClick)
                 .padding(horizontal = 18.dp, vertical = 13.dp),
             verticalAlignment = Alignment.CenterVertically,

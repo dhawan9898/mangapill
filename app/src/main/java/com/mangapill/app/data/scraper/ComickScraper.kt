@@ -12,7 +12,13 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URLEncoder
 
-/** Comick JSON API. Manga and chapter ids are Comick "hid"s. */
+/**
+ * Comick JSON API. Manga and chapter ids are Comick "hid"s.
+ *
+ * Comick stopped hosting chapter images: search, details and chapter lists still work, but every
+ * chapter comes back without pages. Its chapters are therefore read from another source that has the
+ * same title ([hostsPages] = false; see ChapterMirror).
+ */
 class ComickScraper : BaseScraper() {
     override val sourceId = "comick"
     override val sourceName = "Comick"
@@ -21,6 +27,7 @@ class ComickScraper : BaseScraper() {
     override val isExperimental = false
     override val imageReferer = "https://comick.dev/"
     override val supportsHiddenGems = true
+    override val hostsPages = false
 
     private val imageHost = "https://meo.comick.pictures"
 
@@ -116,9 +123,16 @@ class ComickScraper : BaseScraper() {
             (0 until arr.length()).mapNotNull { arr.optJSONObject(it)?.optJSONObject("md_genres")?.optStringOrNull("name") }
         }.orEmpty()
 
+        // The details endpoint's "title" is often an odd alternative ("ORV", "I am the only the one
+        // who levels up"); the alternative flagged is_default is the name the site shows.
+        val defaultTitle = obj.optJSONArray("md_titles")?.let { arr ->
+            (0 until arr.length()).mapNotNull { arr.optJSONObject(it) }
+                .firstOrNull { it.optBoolean("is_default") }?.optStringOrNull("title")
+        }
+
         return Manga(
             id = hid,
-            title = obj.optStringOrNull("title") ?: prettifySlug(obj.optString("slug")),
+            title = defaultTitle ?: obj.optStringOrNull("title") ?: prettifySlug(obj.optString("slug")),
             slug = obj.optString("slug", hid),
             coverImage = cover,
             synopsis = obj.optStringOrNull("desc")?.trim().orEmpty(),
@@ -130,7 +144,13 @@ class ComickScraper : BaseScraper() {
             },
             rating = obj.optStringOrNull("bayesian_rating")?.toFloatOrNull() ?: 0f,
             genres = genres,
-            sourceId = sourceId
+            sourceId = sourceId,
+            // English / romanised alternative names help find the title on the source that serves pages.
+            altTitles = obj.optJSONArray("md_titles")?.let { arr ->
+                (0 until arr.length()).mapNotNull { i ->
+                    arr.optJSONObject(i)?.takeIf { it.optString("lang") in ALT_TITLE_LANGS }?.optStringOrNull("title")
+                }
+            }.orEmpty()
         )
     }
 
@@ -142,5 +162,6 @@ class ComickScraper : BaseScraper() {
     private companion object {
         val COUNTRIES = mapOf("manga" to "jp", "manhwa" to "kr", "manhua" to "cn")
         val STATUSES = mapOf("ongoing" to "1", "completed" to "2", "hiatus" to "4")
+        val ALT_TITLE_LANGS = setOf("en", "ja-ro", "ko-ro", "zh-ro", "")
     }
 }

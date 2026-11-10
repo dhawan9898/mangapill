@@ -27,7 +27,15 @@ class FlameComicsScraper : BaseScraper() {
     override suspend fun search(filters: SearchFilters): List<Manga> {
         val q = filters.query.trim()
         val url = if (q.isNotEmpty()) "/browse?search=${enc(q)}" else "/browse"
-        return parseCards(fetchDocument(url))
+        val cards = parseCards(fetchDocument(url))
+        // The page lists every series and filters in the browser, so filter here: every word of the
+        // query must appear in the title.
+        return if (q.isEmpty()) cards else filterByQuery(cards, q)
+    }
+
+    internal fun filterByQuery(cards: List<Manga>, query: String): List<Manga> {
+        val words = query.lowercase().split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotBlank() }
+        return cards.filter { m -> val t = m.title.lowercase(); words.all { it in t } }
     }
 
     override suspend fun getPopular(): List<Manga> = parseCards(fetchDocument("/browse"))

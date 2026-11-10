@@ -218,7 +218,7 @@ private fun Field(
         shape = RoundedCornerShape(12.dp),
         colors = OutlinedTextFieldDefaults.colors(
             focusedBorderColor = PurpleAccent,
-            unfocusedBorderColor = Color.White.copy(alpha = 0.15f),
+            unfocusedBorderColor = TextMuted.copy(alpha = 0.35f),
             focusedTextColor = TextPrimary,
             unfocusedTextColor = TextPrimary,
             cursorColor = PurpleAccent

@@ -15,7 +15,12 @@ import com.mangapill.app.data.model.SearchFilters
 import com.mangapill.app.data.model.SourceInfo
 import com.mangapill.app.data.prefs.AppPrefs
 import com.mangapill.app.data.scraper.BaseScraper
+import com.mangapill.app.data.scraper.ScraperException
 import com.mangapill.app.data.scraper.SourceRegistry
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.Flow
@@ -249,9 +254,92 @@ class MangaRepository(private val db: AppDatabase, val prefs: AppPrefs) {
     suspend fun getChapterPages(sourceId: String, chapterId: String): List<PageImage> =
         cached("pages:$sourceId:$chapterId", 30 * 60_000L) {
             val pages = scraper(sourceId).getChapterPages(chapterId)
-            if (pages.isEmpty()) throw IOException("This chapter has no readable pages")
+            if (pages.isEmpty()) throw ScraperException("${SourceRegistry.name(sourceId)} has no pages for this chapter")
             pages
         }
+
+    /** Title (sourceId:mangaId) -> where its chapters were last found on another source. */
+    private val mirrors = ConcurrentHashMap<String, Pair<String, String>>()
+
+    /**
+     * The pages of a chapter, from the title's own source when it serves them, otherwise from another
+     * source that has the same title and chapter number. Catalogue-only sources (Comick) always go
+     * to another source; a source that fails or has no pages for the chapter does too.
+     */
+    suspend fun loadChapter(sourceId: String, mangaId: String, chapterId: String, chapterNumber: Float): ChapterPages {
+        val own = SourceRegistry[sourceId]
+        var ownError: Exception? = null
+        if (own == null || own.hostsPages) {
+            try {
+                return ChapterPages(getChapterPages(sourceId, chapterId))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                ownError = e
+            }
+        }
+        mirrorPages(sourceId, mangaId, chapterNumber)?.let { return it }
+        val name = SourceRegistry.name(sourceId)
+        throw when {
+            own != null && !own.hostsPages -> ScraperException(
+                "$name doesn't host chapter pages, and none of the other sources has chapter " +
+                    "${formatNumber(chapterNumber)} of this title yet."
+            )
+            else -> ownError ?: ScraperException("$name has no pages for this chapter")
+        }
+    }
+
+    private suspend fun mirrorPages(sourceId: String, mangaId: String, number: Float): ChapterPages? {
+        val titleKey = "$sourceId:$mangaId"
+        // The source that worked for the previous chapter usually has this one too.
+        mirrors[titleKey]?.let { (src, id) -> pagesOn(src, id, number)?.let { return it } }
+
+        val seed = runCatching { getMangaDetails(sourceId, mangaId) }.getOrNull() ?: return null
+        val keys = ChapterMirror.titleKeys(seed)
+        val queries = ChapterMirror.queries(seed)
+        if (keys.isEmpty() || queries.isEmpty()) return null
+
+        val matches = coroutineScope {
+            mirrorCandidates(exclude = sourceId).map { source ->
+                async {
+                    withTimeoutOrNull(MIRROR_SEARCH_TIMEOUT_MS) {
+                        for (q in queries) {
+                            val hits = runCatching { source.search(SearchFilters(q)) }.getOrNull().orEmpty()
+                            ChapterMirror.bestMatch(hits, keys)?.let { return@withTimeoutOrNull Triple(source, it.first, it.second) }
+                        }
+                        null
+                    }
+                }
+            }.awaitAll().filterNotNull()
+        }
+        // Best match first; equal scores keep the candidate order (enabled sources first).
+        for ((source, manga, _) in matches.sortedByDescending { it.third }) {
+            val pages = pagesOn(source.sourceId, manga.id, number) ?: continue
+            mirrors[titleKey] = source.sourceId to manga.id
+            return pages
+        }
+        return null
+    }
+
+    private suspend fun pagesOn(sourceId: String, mangaId: String, number: Float): ChapterPages? = try {
+        val chapter = ChapterMirror.sameChapter(getChapterList(sourceId, mangaId), number)
+        chapter?.let { ChapterPages(getChapterPages(sourceId, it.id), servedBy = SourceRegistry.name(sourceId)) }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        null
+    }
+
+    /** Sources that serve pages: the enabled ones first, then the stable built-ins that are switched off. */
+    private fun mirrorCandidates(exclude: String): List<BaseScraper> {
+        val enabled = enabledScrapers()
+        val stable = SourceRegistry.builtIn.filter { !it.isExperimental }
+        return (enabled + stable).distinctBy { it.sourceId }
+            .filter { it.sourceId != exclude && it.hostsPages }
+            .filter { (cooldown[it.sourceId] ?: 0L) < System.currentTimeMillis() }
+    }
+
+    private fun formatNumber(n: Float): String = if (n % 1f == 0f) n.toInt().toString() else n.toString()
 
     private suspend fun persist(mangas: List<Manga>) {
         runCatching { db.mangaDao().insertMangas(mangas.map { it.toEntity() }) }
@@ -352,6 +440,7 @@ class MangaRepository(private val db: AppDatabase, val prefs: AppPrefs) {
         const val MULTI_SOURCE_TIMEOUT_MS = 10_000L
         const val SINGLE_SOURCE_TIMEOUT_MS = 25_000L
         const val COOLDOWN_MS = 3 * 60_000L
+        const val MIRROR_SEARCH_TIMEOUT_MS = 12_000L
         const val MAX_CACHE_ENTRIES = 300
         const val CACHE_TRIM_BATCH = 30
     }

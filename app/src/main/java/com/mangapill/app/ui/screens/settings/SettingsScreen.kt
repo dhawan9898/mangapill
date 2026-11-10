@@ -3,7 +3,6 @@ package com.mangapill.app.ui.screens.settings
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -11,7 +10,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AutoStories
@@ -22,6 +20,8 @@ import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.automirrored.outlined.ManageSearch
 import androidx.compose.material.icons.outlined.TouchApp
+import androidx.compose.material.icons.outlined.WaterDrop
+import com.mangapill.app.ui.theme.AppTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -31,29 +31,23 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.clickable
 import coil.imageLoader
 import com.mangapill.app.data.model.ReaderMode
 import com.mangapill.app.data.repository.MangaRepository
 import com.mangapill.app.ui.components.ActionRow
 import com.mangapill.app.ui.components.CardDivider
 import com.mangapill.app.ui.components.ConfirmDialog
-import com.mangapill.app.ui.components.IosSwitch
 import com.mangapill.app.ui.components.ScreenHeader
 import com.mangapill.app.ui.components.SectionLabel
 import com.mangapill.app.ui.components.SegmentedControl
 import com.mangapill.app.ui.components.SettingsCard
 import com.mangapill.app.ui.components.ToggleRow
-import com.mangapill.app.ui.components.glass.liquidGlass
 import com.mangapill.app.ui.navigation.bottomContentPadding
-import com.mangapill.app.ui.theme.PinkAccent
 import com.mangapill.app.ui.theme.TextMuted
 import com.mangapill.app.ui.theme.TextPrimary
 import com.mangapill.app.ui.theme.TextSecondary
@@ -61,16 +55,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** Settings, grouped like AniStream's: Reader, Sources, OPDS servers, Data and About. */
+/** Settings, grouped like AniStream's: Appearance, Reader, OPDS servers, Data and About. */
 @OptIn(coil.annotation.ExperimentalCoilApi::class)
 @Composable
 fun SettingsScreen(repository: MangaRepository) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val prefs = repository.prefs
-    val enabled by prefs.enabledSources.collectAsState()
-    // Read so the source list below recomposes when a server is added or removed.
-    val servers by prefs.opdsServers.collectAsState()
+    val theme by prefs.theme.collectAsState()
+    val clearGlass by prefs.clearGlass.collectAsState()
     val readerMode by prefs.readerMode.collectAsState()
     val keepScreenOn by prefs.keepScreenOn.collectAsState()
     val tapToTurn by prefs.tapToTurn.collectAsState()
@@ -98,6 +91,27 @@ fun SettingsScreen(repository: MangaRepository) {
                 .padding(top = 18.dp, bottom = bottomContentPadding()),
             verticalArrangement = Arrangement.spacedBy(0.dp)
         ) {
+            SectionLabel("Appearance")
+            SettingsCard {
+                Column(Modifier.padding(16.dp)) {
+                    Text("Theme", color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 12.dp))
+                    SegmentedControl(
+                        options = AppTheme.entries.map { it.label },
+                        selectedIndex = theme.ordinal,
+                        onSelect = { prefs.setTheme(AppTheme.entries[it]) }
+                    )
+                }
+                CardDivider()
+                ToggleRow(
+                    Icons.Outlined.WaterDrop,
+                    "Transparent Glass",
+                    "Floating bars, buttons and tiles turn see-through instead of frosted.",
+                    clearGlass,
+                    prefs::setClearGlass
+                )
+            }
+
+            Spacer(Modifier.height(26.dp))
             SectionLabel("Reader")
             SettingsCard {
                 Column(Modifier.padding(16.dp)) {
@@ -131,52 +145,6 @@ fun SettingsScreen(repository: MangaRepository) {
                     keepScreenOn,
                     prefs::setKeepScreenOn
                 )
-            }
-
-            Spacer(Modifier.height(26.dp))
-            SectionLabel("Sources")
-            SettingsCard {
-                Text(
-                    "Enabled sources are searched together. Experimental ones could not be verified and may be " +
-                        "blocked, slow or broken; a source that fails is skipped for a few minutes automatically.",
-                    color = TextSecondary,
-                    fontSize = 12.sp,
-                    lineHeight = 17.sp,
-                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 4.dp)
-                )
-                val sources = remember(servers) { repository.sources }
-                sources.forEachIndexed { i, s ->
-                    if (i > 0) CardDivider()
-                    val on = s.id in enabled
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable(role = Role.Switch) {
-                                if (!prefs.setSourceEnabled(s.id, !on)) {
-                                    Toast.makeText(context, "Keep at least one source enabled", Toast.LENGTH_SHORT).show()
-                                }
-                            }
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(s.name, color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                            if (s.experimental) {
-                                Text(
-                                    "Experimental",
-                                    color = PinkAccent,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier
-                                        .padding(top = 3.dp)
-                                        .liquidGlass(RoundedCornerShape(6.dp), 0.04f)
-                                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                                )
-                            }
-                        }
-                        IosSwitch(on)
-                    }
-                }
             }
 
             Spacer(Modifier.height(26.dp))
@@ -236,7 +204,7 @@ fun SettingsScreen(repository: MangaRepository) {
             Spacer(Modifier.height(26.dp))
             SectionLabel("About")
             SettingsCard {
-                ActionRow(Icons.Outlined.Info, "Mangapill", "A manga reader for the sources you enable.", onClick = null, trailing = "v$version")
+                ActionRow(Icons.Outlined.Info, "Mangapill", "Manga, manhwa and manhua from several sources at once.", onClick = null, trailing = "v$version")
                 CardDivider()
                 ActionRow(
                     Icons.Outlined.AutoStories,

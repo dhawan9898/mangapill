@@ -1,5 +1,9 @@
 package com.mangapill.app.ui.components
 
+import com.mangapill.app.ui.theme.LocalPalette
+import com.mangapill.app.ui.theme.OledCard
+import com.mangapill.app.ui.theme.OnImage
+
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -61,6 +65,7 @@ import com.mangapill.app.ui.theme.TextPrimary
 import com.mangapill.app.ui.theme.TextSecondary
 
 fun Modifier.shimmer(): Modifier = composed {
+    val palette = LocalPalette.current
     val transition = rememberInfiniteTransition(label = "shimmer")
     val x by transition.animateFloat(
         initialValue = -400f,
@@ -70,7 +75,7 @@ fun Modifier.shimmer(): Modifier = composed {
     )
     background(
         Brush.linearGradient(
-            colors = listOf(Color(0xFF17171A), Color(0xFF26262C), Color(0xFF17171A)),
+            colors = listOf(palette.surface, palette.card, palette.surface),
             start = Offset(x, 0f),
             end = Offset(x + 400f, 400f)
         )
@@ -92,7 +97,7 @@ fun coverReferer(manga: Manga): String? = SourceRegistry.imageReferer(manga.sour
 
 @Composable
 fun CoverFallback(modifier: Modifier = Modifier) {
-    Box(modifier.background(Color(0xFF1E1E22)), contentAlignment = Alignment.Center) {
+    Box(modifier.background(OledCard), contentAlignment = Alignment.Center) {
         Icon(Icons.Default.BrokenImage, contentDescription = null, tint = TextMuted, modifier = Modifier.size(28.dp))
     }
 }
@@ -139,10 +144,10 @@ fun MangaCover(manga: Manga, modifier: Modifier = Modifier, alpha: Float = 1f) {
 fun SourceBadge(name: String, modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
-            .liquidGlass(RoundedCornerShape(8.dp), 0.08f, base = Color(0x8C000000))
+            .liquidGlass(RoundedCornerShape(8.dp), 0.08f, base = Color(0x8C000000), overImage = true)
             .padding(horizontal = 7.dp, vertical = 3.dp)
     ) {
-        Text(name, color = TextPrimary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+        Text(name, color = OnImage, fontSize = 9.sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -181,7 +186,7 @@ fun MangaPosterCard(
             RatingBadge(manga.rating, Modifier.align(Alignment.TopEnd).padding(8.dp))
             Text(
                 text = manga.title,
-                color = TextPrimary,
+                color = OnImage,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Bold,
                 lineHeight = 16.sp,

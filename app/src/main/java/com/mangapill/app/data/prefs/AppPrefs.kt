@@ -1,6 +1,7 @@
 package com.mangapill.app.data.prefs
 
 import com.mangapill.app.data.model.ReaderMode
+import com.mangapill.app.ui.theme.AppTheme
 import android.content.Context
 import com.mangapill.app.data.opds.OpdsServer
 import com.mangapill.app.data.scraper.SourceRegistry
@@ -24,13 +25,14 @@ class AppPrefs(context: Context) {
     private val _recentSearches = MutableStateFlow(loadRecents())
     val recentSearches: StateFlow<List<String>> = _recentSearches.asStateFlow()
 
-    private fun loadEnabled(): Set<String> {
-        val known = SourceRegistry.all.map { it.sourceId }.toSet()
-        val saved = sp.getStringSet(KEY_ENABLED, null)?.intersect(known)
-        if (!saved.isNullOrEmpty()) return saved
-        // Only sources that are known to work are on by default; experimental ones are opt-in.
-        return SourceRegistry.all.filterNot { it.isExperimental }.map { it.sourceId }.toSet()
-    }
+    /**
+     * Sources are no longer picked in Settings: every stable built-in source is searched, plus the
+     * user's OPDS servers. (A choice saved by an older version is ignored, so nobody is left with a
+     * source switched off that they can no longer switch back on.)
+     */
+    private fun loadEnabled(): Set<String> =
+        (SourceRegistry.builtIn.filterNot { it.isExperimental } + SourceRegistry.all.filterIsInstance<com.mangapill.app.data.scraper.OpdsScraper>())
+            .map { it.sourceId }.toSet()
 
     /** Returns false (and changes nothing) when asked to disable the last enabled source. */
     fun setSourceEnabled(id: String, enabled: Boolean): Boolean {
@@ -75,6 +77,26 @@ class AppPrefs(context: Context) {
         sp.edit().putString(KEY_READER_MODE, mode.name).apply()
     }
 
+    private val _theme = MutableStateFlow(
+        AppTheme.entries.firstOrNull { it.name == sp.getString(KEY_THEME, null) } ?: AppTheme.DARK
+    )
+    /** Settings → Appearance → Theme (the same four as AniStream and CineStream). */
+    val theme: StateFlow<AppTheme> = _theme.asStateFlow()
+
+    fun setTheme(theme: AppTheme) {
+        _theme.value = theme
+        sp.edit().putString(KEY_THEME, theme.name).apply()
+    }
+
+    private val _clearGlass = MutableStateFlow(sp.getBoolean(KEY_CLEAR_GLASS, false))
+    /** Settings → Appearance → Transparent Glass. */
+    val clearGlass: StateFlow<Boolean> = _clearGlass.asStateFlow()
+
+    fun setClearGlass(on: Boolean) {
+        _clearGlass.value = on
+        sp.edit().putBoolean(KEY_CLEAR_GLASS, on).apply()
+    }
+
     private val _keepScreenOn = MutableStateFlow(sp.getBoolean(KEY_KEEP_SCREEN_ON, true))
     val keepScreenOn: StateFlow<Boolean> = _keepScreenOn.asStateFlow()
 
@@ -113,6 +135,8 @@ class AppPrefs(context: Context) {
         const val KEY_RECENTS = "recent_searches"
         const val KEY_OPDS = "opds_servers"
         const val KEY_READER_MODE = "reader_mode"
+        const val KEY_THEME = "theme"
+        const val KEY_CLEAR_GLASS = "clear_glass"
         const val KEY_KEEP_SCREEN_ON = "keep_screen_on"
         const val KEY_TAP_TO_TURN = "tap_to_turn"
         const val MAX_RECENTS = 8

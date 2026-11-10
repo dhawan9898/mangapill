@@ -110,12 +110,12 @@ fun IntroCardSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = Color(0xF217171A),
+        containerColor = com.mangapill.app.ui.theme.OledSurface,
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
         dragHandle = {
             Box(
                 Modifier.padding(top = 10.dp, bottom = 6.dp).width(40.dp).height(4.dp)
-                    .clip(CircleShape).background(Color.White.copy(alpha = 0.25f))
+                    .clip(CircleShape).background(com.mangapill.app.ui.theme.TextMuted.copy(alpha = 0.45f))
             )
         }
     ) {

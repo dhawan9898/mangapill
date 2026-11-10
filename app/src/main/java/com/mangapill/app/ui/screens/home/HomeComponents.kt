@@ -1,5 +1,8 @@
 package com.mangapill.app.ui.screens.home
 
+import com.mangapill.app.ui.theme.OnImage
+import com.mangapill.app.ui.theme.TrackOff
+import com.mangapill.app.ui.theme.OledSurface
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Spring
@@ -299,7 +302,7 @@ private fun highlight(text: String, query: String): AnnotatedString = buildAnnot
     append(text)
     val q = query.trim()
     val i = if (q.isEmpty()) -1 else text.indexOf(q, ignoreCase = true)
-    if (i >= 0) addStyle(SpanStyle(color = Color.White, fontWeight = FontWeight.ExtraBold), i, i + q.length)
+    if (i >= 0) addStyle(SpanStyle(fontWeight = FontWeight.ExtraBold), i, i + q.length)
 }
 
 // ---- Dashboard rows -----------------------------------------------------------------------------
@@ -397,7 +400,7 @@ private fun FeaturedSlide(manga: Manga, rank: Int, onOpen: () -> Unit, onPeek: (
                     )
                     Text(
                         manga.title,
-                        color = TextPrimary,
+                        color = OnImage,
                         fontSize = 21.sp,
                         lineHeight = 25.sp,
                         fontWeight = FontWeight.ExtraBold,
@@ -482,7 +485,7 @@ private fun ContinueReadingCard(entry: HistoryEntry, onClick: () -> Unit) {
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold
                 )
-                Box(Modifier.fillMaxWidth().height(4.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.1f))) {
+                Box(Modifier.fillMaxWidth().height(4.dp).clip(CircleShape).background(TrackOff)) {
                     Box(Modifier.fillMaxWidth(fraction).fillMaxHeight().clip(CircleShape).background(BrandGradient))
                 }
                 Text("${(fraction * 100).toInt()}% · Continue", color = TextMuted, fontSize = 11.sp)
@@ -502,12 +505,12 @@ fun FilterSheet(state: HomeState, repository: MangaRepository, onDismiss: () -> 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = Color(0xF217171A),
+        containerColor = OledSurface,
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
         dragHandle = {
             Box(
                 Modifier.padding(top = 10.dp, bottom = 6.dp).width(40.dp).height(4.dp)
-                    .clip(CircleShape).background(Color.White.copy(alpha = 0.25f))
+                    .clip(CircleShape).background(TextMuted.copy(alpha = 0.45f))
             )
         }
     ) {

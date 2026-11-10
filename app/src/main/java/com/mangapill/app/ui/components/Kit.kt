@@ -163,7 +163,7 @@ fun IosSwitch(checked: Boolean, modifier: Modifier = Modifier) {
             .size(width = 49.dp, height = 30.dp)
             .clip(CircleShape)
             .background(track)
-            .border(1.dp, if (checked) Color.Transparent else Color(0x24FFFFFF), CircleShape)
+            .border(1.dp, if (checked) Color.Transparent else TextMuted.copy(alpha = 0.3f), CircleShape)
     ) {
         Box(
             Modifier
@@ -305,7 +305,7 @@ fun SegmentedControl(
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier
                                 .clip(CircleShape)
-                                .background(Color(0x1FFFFFFF))
+                                .background(TrackOff)
                                 .padding(horizontal = 6.dp, vertical = 1.dp)
                         )
                     }
@@ -376,7 +376,7 @@ fun ConfirmDialog(
                     onConfirm,
                     Modifier.weight(1f),
                     background = if (danger) PurpleAccent else Surface,
-                    contentColor = Color.White
+                    contentColor = if (danger) Color.White else TextPrimary
                 )
             }
         }

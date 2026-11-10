@@ -10,7 +10,9 @@ data class Manga(
     val rating: Float = 0.0f,
     val genres: List<String> = emptyList(),
     val sourceId: String = "mangapill",
-    val latestChapterNumber: Float = 0f
+    val latestChapterNumber: Float = 0f,
+    /** Other names the title is known by (English, romanised...). Used to find it on another source. */
+    val altTitles: List<String> = emptyList()
 ) {
     /** Globally unique key (ids are only unique within a source). Used for DB rows. */
     val key: String get() = "$sourceId:$id"

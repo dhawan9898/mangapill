@@ -18,6 +18,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -79,9 +80,25 @@ import com.mangapill.app.ui.theme.TextMuted
 import com.mangapill.app.ui.theme.TextPrimary
 import kotlinx.coroutines.flow.distinctUntilChanged
 
-@OptIn(ExperimentalFoundationApi::class)
+/** The reader keeps its black page and light controls whatever the app theme is. */
 @Composable
 fun DualModeReaderScreen(
+    sourceId: String,
+    mangaId: String,
+    chapterId: String,
+    chapterNumber: Float,
+    repository: MangaRepository,
+    onBack: () -> Unit,
+    onOpenChapter: (Chapter) -> Unit
+) {
+    com.mangapill.app.ui.theme.AlwaysDark {
+        ReaderContent(sourceId, mangaId, chapterId, chapterNumber, repository, onBack, onOpenChapter)
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun ReaderContent(
     sourceId: String,
     mangaId: String,
     chapterId: String,
@@ -95,6 +112,8 @@ fun DualModeReaderScreen(
     var startPage by remember { mutableIntStateOf(0) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
+    /** Set when another source served the pages (the title's own source has none). */
+    var servedBy by remember { mutableStateOf<String?>(null) }
     var reloadTick by remember { mutableIntStateOf(0) }
     // The mode is remembered across chapters and app restarts.
     val readerMode by repository.prefs.readerMode.collectAsState()
@@ -116,7 +135,9 @@ fun DualModeReaderScreen(
         try {
             val resume = repository.getReadingHistoryOnce(sourceId, mangaId)
             startPage = if (resume != null && resume.chapterId == chapterId) (resume.lastReadPage - 1).coerceAtLeast(0) else 0
-            pages = repository.getChapterPages(sourceId, chapterId)
+            val loaded = repository.loadChapter(sourceId, mangaId, chapterId, chapterNumber)
+            pages = loaded.pages
+            servedBy = loaded.servedBy
             currentPage = startPage + 1
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
@@ -175,7 +196,7 @@ fun DualModeReaderScreen(
         val next = nextChapter ?: return@LaunchedEffect
         if (nextPrefetched || pages.isEmpty() || currentPage < pages.size - 3) return@LaunchedEffect
         nextPrefetched = true
-        val nextPages = runCatching { repository.getChapterPages(sourceId, next.id) }.getOrNull() ?: return@LaunchedEffect
+        val nextPages = runCatching { repository.loadChapter(sourceId, mangaId, next.id, next.chapterNumber).pages }.getOrNull() ?: return@LaunchedEffect
         val loader = context.imageLoader
         nextPages.forEach { loader.enqueue(pageRequest(context, it)) }
     }
@@ -293,12 +314,17 @@ fun DualModeReaderScreen(
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextPrimary)
                     }
-                    Text(
-                        text = "Chapter ${formatChapterNumber(chapterNumber)}",
-                        color = TextPrimary,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Column {
+                        Text(
+                            text = "Chapter ${formatChapterNumber(chapterNumber)}",
+                            color = TextPrimary,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        servedBy?.let {
+                            Text("Pages from $it", color = TextMuted, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                        }
+                    }
                 }
                 Row(
                     modifier = Modifier

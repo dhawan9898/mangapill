@@ -14,6 +14,8 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -46,7 +48,9 @@ class MainActivity : ComponentActivity() {
         val repository = (application as MangapillApp).repository
 
         setContent {
-            MangapillTheme {
+            val theme by repository.prefs.theme.collectAsState()
+            val clearGlass by repository.prefs.clearGlass.collectAsState()
+            MangapillTheme(theme = theme, clearGlass = clearGlass) {
                 val navController = rememberNavController()
                 val scope = rememberCoroutineScope()
                 // Lives above the NavHost so query, filters and scroll position survive navigation.

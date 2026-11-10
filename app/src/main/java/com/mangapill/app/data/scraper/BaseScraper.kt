@@ -37,6 +37,12 @@ class ScraperException(message: String, cause: Throwable? = null) : IOException(
  * cancellation (a cancelled coroutine cancels the underlying HTTP call, so timeouts are real).
  */
 abstract class BaseScraper {
+    /**
+     * False for catalogue-only sources (search, details and chapter lists, but no page images).
+     * Their chapters are read from another source that has the same title (see ChapterMirror).
+     */
+    open val hostsPages: Boolean = true
+
     abstract val sourceId: String
     abstract val sourceName: String
     abstract val baseUrl: String
