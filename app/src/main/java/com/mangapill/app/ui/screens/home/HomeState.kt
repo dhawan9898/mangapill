@@ -1,5 +1,9 @@
 package com.mangapill.app.ui.screens.home
 
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.runtime.mutableStateMapOf
+import com.mangapill.app.data.repository.HomeRail
+
 import com.mangapill.app.data.ErrorText
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.runtime.Stable
@@ -17,7 +21,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 
 /**
@@ -53,35 +56,27 @@ class HomeState(
     var searchError by mutableStateOf<String?>(null)
         private set
 
-    // ---- Dashboard ------------------------------------------------------------------------------
-    var trending by mutableStateOf<List<Manga>>(emptyList())
-        private set
-    var latest by mutableStateOf<List<Manga>>(emptyList())
-        private set
-    var hiddenGems by mutableStateOf<List<Manga>>(emptyList())
-        private set
+    // ---- Home (MangaDex rails) --------------------------------------------------------------------
+    /** Each rail's state; a rail loads the first time it is shown and stays loaded. */
+    val rails = mutableStateMapOf<HomeRail, RailState>()
     var because by mutableStateOf<Recommendation?>(null)
         private set
-    var dashboardLoading by mutableStateOf(false)
-        private set
-    var dashboardError by mutableStateOf<String?>(null)
-        private set
+    val homeList = LazyListState()
 
     val resultsGrid = LazyGridState()
-    val dashboardGrid = LazyGridState()
 
     val filters: SearchFilters get() = SearchFilters(query.trim(), type, genre, status)
     val activeFilterCount: Int get() = listOfNotNull(type, status, genre).size
     val isSearching: Boolean get() = query.trim().length >= 2 || filters.hasFilters
 
     private var searchJob: Job? = null
-    private var dashboardJob: Job? = null
     private var started = false
 
     fun start() {
         if (started) return
         started = true
-        loadDashboard(force = false)
+        loadRail(HomeRail.POPULAR)
+        scope.launch { because = runCatching { repository.becauseYouRead(null) }.getOrNull() }
     }
 
     fun updateQuery(value: String) {
@@ -115,7 +110,6 @@ class HomeState(
     fun selectSource(id: String?) {
         if (id == source) return
         source = id
-        loadDashboard(force = false)
         runSearch(debounce = false)
     }
 
@@ -125,7 +119,6 @@ class HomeState(
         knownEnabled = enabled
         if (!started || previous == null || previous == enabled) return
         if (source != null && source !in enabled) source = null
-        loadDashboard(force = false)
         runSearch(debounce = false)
     }
 
@@ -140,15 +133,31 @@ class HomeState(
         // The first call only records the state; the dashboard load already computes the row.
         if (!started || previous == UNSET || previous == latestHistoryKey) return
         recommendationJob?.cancel()
-        val src = source
         recommendationJob = scope.launch {
-            runCatching { repository.becauseYouRead(src) }.getOrNull()?.let { because = it }
+            runCatching { repository.becauseYouRead(null) }.getOrNull()?.let { because = it }
         }
     }
 
-    fun retry() {
-        loadDashboard(force = true)
-        runSearch(debounce = false)
+    /** Loads [rail] unless it is loaded or loading already ([force]: load it again). */
+    fun loadRail(rail: HomeRail, force: Boolean = false) {
+        val current = rails[rail]
+        if (!force && (current is RailState.Ready || current is RailState.Loading)) return
+        rails[rail] = RailState.Loading
+        scope.launch {
+            rails[rail] = try {
+                RailState.Ready(repository.homeRail(rail, force))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                RailState.Failed(ErrorText.describe(e))
+            }
+        }
+    }
+
+    /** Pull to refresh / Try again: every rail that was shown loads again. */
+    fun refreshHome() {
+        rails.keys.toList().forEach { loadRail(it, force = true) }
+        if (HomeRail.POPULAR !in rails) loadRail(HomeRail.POPULAR, force = true)
     }
 
     private fun runSearch(debounce: Boolean) {
@@ -179,27 +188,6 @@ class HomeState(
         }
     }
 
-    private fun loadDashboard(force: Boolean) {
-        dashboardJob?.cancel()
-        val src = source
-        dashboardJob = scope.launch {
-            dashboardLoading = true
-            dashboardError = null
-            var failures = emptyList<String>()
-            val rows = listOf(
-                launch { collectSafely(repository.trendingStream(src, force)) { trending = it.items; failures = failures + it.failures } },
-                launch { collectSafely(repository.latestStream(src, force)) { latest = it.items; failures = failures + it.failures } }
-            )
-            launch { hiddenGems = runCatching { repository.hiddenGems(src) }.getOrDefault(emptyList()) }
-            launch { because = runCatching { repository.becauseYouRead(src) }.getOrNull() }
-            rows.joinAll()
-            dashboardLoading = false
-            if (trending.isEmpty() && latest.isEmpty()) {
-                dashboardError = ErrorText.summarize(failures).ifBlank { "Nothing to show right now." }
-            }
-        }
-    }
-
     /** Collects [flow], turning a thrown error into a failed Result instead of crashing the screen. */
     private suspend fun collectSafely(flow: Flow<SourceResults>, onEach: (SourceResults) -> Unit): Result<Unit> =
         try {
@@ -214,4 +202,10 @@ class HomeState(
     private companion object {
         const val UNSET = "\u0000unset"
     }
+}
+
+sealed interface RailState {
+    data object Loading : RailState
+    data class Ready(val items: List<Manga>) : RailState
+    data class Failed(val message: String) : RailState
 }

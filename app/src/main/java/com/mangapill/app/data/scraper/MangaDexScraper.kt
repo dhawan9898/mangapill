@@ -44,6 +44,13 @@ class MangaDexScraper : BaseScraper() {
         return parseMangaList(getJson(url.toString()))
     }
 
+    /**
+     * A MangaDex list for the home screen: [query] is the ordering / filtering part of /manga
+     * (e.g. "order[rating]=desc&originalLanguage[]=ko"); covers and the usual safety filters are added.
+     */
+    suspend fun list(query: String, limit: Int = 20): List<Manga> =
+        parseMangaList(getJson("/manga?limit=$limit&$query&$listFilters"))
+
     override suspend fun getPopular(): List<Manga> =
         parseMangaList(getJson("/manga?limit=20&order[followedCount]=desc&$listFilters"))
 
@@ -141,11 +148,18 @@ class MangaDexScraper : BaseScraper() {
             localized(tags.getJSONObject(it).optJSONObject("attributes")?.optJSONObject("name"))
         }
 
-        var title = localized(attrs.optJSONObject("title"))
-        if (title == null) {
-            val alts = attrs.optJSONArray("altTitles") ?: JSONArray()
-            title = (0 until alts.length()).firstNotNullOfOrNull { localized(alts.getJSONObject(it)) }
-        }
+        // MangaDex's main title is often romanised ("Na Honjaman Level-Up"); the English name, when
+        // there is one, is among the alternative titles ("Solo Leveling"). Show the English one, keep
+        // the others for matching the title on other sources.
+        val main = attrs.optJSONObject("title")
+        val alts = attrs.optJSONArray("altTitles") ?: JSONArray()
+        val altList = (0 until alts.length()).mapNotNull { alts.optJSONObject(it) }
+        val english = main?.optStringOrNull("en")
+            ?: altList.firstNotNullOfOrNull { it.optStringOrNull("en") }
+        val title = english ?: localized(main) ?: altList.firstNotNullOfOrNull { localized(it) }
+        val otherNames = (listOfNotNull(localized(main)) + altList.flatMap { o ->
+            o.keys().asSequence().filter { it == "en" || it.endsWith("-ro") }.mapNotNull { o.optStringOrNull(it) }.toList()
+        }).filter { it != title }.distinct().take(8)
 
         return Manga(
             id = id,
@@ -160,7 +174,8 @@ class MangaDexScraper : BaseScraper() {
                 else -> MangaStatus.UNKNOWN
             },
             genres = genres,
-            sourceId = sourceId
+            sourceId = sourceId,
+            altTitles = otherNames
         )
     }
 
@@ -177,11 +192,11 @@ class MangaDexScraper : BaseScraper() {
         return optString(name).takeIf { it.isNotBlank() }
     }
 
-    private companion object {
-        val LANGUAGES = mapOf("manga" to "ja", "manhwa" to "ko", "manhua" to "zh")
+    companion object {
+        internal val LANGUAGES = mapOf("manga" to "ja", "manhwa" to "ko", "manhua" to "zh")
 
         /** MangaDex tag ids for [com.mangapill.app.data.model.Genres]. */
-        val TAGS = mapOf(
+        internal val TAGS = mapOf(
             "action" to "391b0423-d847-456f-aff0-8b0cfc03066b",
             "adventure" to "87cc87cd-a395-47af-b27a-93258283bbc6",
             "comedy" to "4d32cc48-9f00-4cca-9b5a-a839f0764984",

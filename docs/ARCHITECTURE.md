@@ -80,14 +80,23 @@ specs, and it copies none of OpenComic's code.
 * Servers are added in Settings (validated with a test request, removed again if it fails) and enabled
   automatically. Cleartext HTTP is allowed so LAN servers such as `http://192.168.1.10:25600` work.
 
-## Recommendations
+## Home
 
+Laid out like AniStream and CineStream: wordmark, Categories and Search; a billboard carousel; rails.
+The catalogue rails come straight from the MangaDex API (`HomeRail`, `MangaDexScraper.list`), each
+loading the first time it scrolls into view and cached for 20 minutes:
+
+* **Billboard**: most followed (`order[followedCount]`); Read opens the title, Info the quick look.
 * **Continue reading**: reading history, newest first.
-* **Because you read X**: genre affinity weighted by recency (`1 / (1 + rank)`), then a genre search on
-  the enabled sources, excluding titles already read.
-* **Trending today** / **Latest updates**: each source's popular and latest lists, merged.
-* **Recently updated favorites**: library titles that appear in the latest-updates feed.
-* **Hidden gems**: best-rated recent titles (MangaDex `order[rating]` + `createdAtSince`, Comick `sort=rating`).
+* **Top 10 new this season**: most followed titles created in the last 120 days.
+* **Latest updates**, **Top rated**, genre rails (tag ids), **Manhwa** (`originalLanguage[]=ko`),
+  **Completed series**. "See all" opens the Search tab with the matching filter.
+* **My List**, and **Because you read X** (genre affinity weighted by recency, searched on the sources).
+
+MangaDex titles show their English name when the main title is romanised; the other names are kept
+for matching. When a title's own source lists no chapters (MangaDex has none for licensed titles),
+the chapter list comes from the same title on another source (ids `m|<source>|<chapter>`), and
+those chapters open there.
 
 ## Database schema (Room, `mangapill_db`)
 

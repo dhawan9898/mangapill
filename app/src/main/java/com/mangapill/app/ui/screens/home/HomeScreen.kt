@@ -1,25 +1,8 @@
 package com.mangapill.app.ui.screens.home
 
-import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -29,16 +12,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.GridItemSpan
-import androidx.compose.foundation.lazy.grid.LazyGridItemSpanScope
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudOff
-import androidx.compose.material.icons.filled.SearchOff
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -46,40 +27,33 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mangapill.app.data.model.Chapter
-import com.mangapill.app.data.model.Genres
 import com.mangapill.app.data.model.Manga
 import com.mangapill.app.data.repository.HistoryEntry
+import com.mangapill.app.data.repository.HomeRail
 import com.mangapill.app.data.repository.MangaRepository
-import com.mangapill.app.ui.components.MangaPosterCard
-import com.mangapill.app.ui.components.PosterSkeleton
-import com.mangapill.app.ui.components.SectionHeader
 import com.mangapill.app.ui.components.StateMessage
-import com.mangapill.app.ui.components.bleed
 import com.mangapill.app.ui.components.Wordmark
 import com.mangapill.app.ui.components.glass.GlassIconButton
-import androidx.compose.material.icons.outlined.Search
-import com.mangapill.app.ui.components.glass.GlassChip
+import com.mangapill.app.ui.components.glass.liquidGlass
 import com.mangapill.app.ui.components.manga.IntroCardSheet
 import com.mangapill.app.ui.navigation.bottomContentPadding
-import com.mangapill.app.ui.theme.PurpleAccent
-import com.mangapill.app.ui.theme.TextMuted
-
-internal val FullSpan: LazyGridItemSpanScope.() -> GridItemSpan = { GridItemSpan(maxLineSpan) }
+import com.mangapill.app.ui.theme.TextPrimary
+import kotlinx.coroutines.launch
 
 /**
- * Home: the wordmark header with a search button (which opens the Search tab, as in AniStream),
- * the source chips and the dashboard rows. Search, filters and results live on the Search tab.
+ * Home, laid out like AniStream's and CineStream's: the wordmark with Categories and Search, a
+ * billboard carousel of the most popular titles, Continue Reading, a Top 10, and rails of
+ * MangaDex lists (latest, top rated, genres, manhwa, completed). Each rail loads when it scrolls
+ * into view and stays loaded, so coming back to Home is instant.
  */
 @Composable
 fun HomeScreen(
@@ -92,27 +66,121 @@ fun HomeScreen(
 ) {
     LaunchedEffect(Unit) { state.start() }
 
-    val enabled by repository.prefs.enabledSources.collectAsState()
-    LaunchedEffect(enabled) { state.onEnabledSourcesChanged(enabled) }
-
     val history by remember { repository.historyEntries() }.collectAsState(initial = emptyList())
     val favorites by remember { repository.bookmarkedManga() }.collectAsState(initial = emptyList())
     LaunchedEffect(history.firstOrNull()?.manga?.key) { state.refreshRecommendations(history.firstOrNull()?.manga?.key) }
+    val savedKeys = remember(favorites) { favorites.map { it.key }.toSet() }
 
     var peek by remember { mutableStateOf<Manga?>(null) }
-    val columns = if (LocalConfiguration.current.screenWidthDp >= 600) 5 else 2
-    val sources = remember(enabled) { repository.sources.filter { it.id in enabled } }
+    var showCategories by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
-    Column(Modifier.fillMaxSize().statusBarsPadding()) {
-        Row(
-            Modifier.fillMaxWidth().padding(start = 20.dp, end = 16.dp, top = 8.dp, bottom = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Wordmark(Modifier.weight(1f))
-            GlassIconButton(Icons.Outlined.Search, "Search", onOpenSearch)
+    // "See all" and Categories both end on the Search tab with the matching filter applied.
+    val openFiltered: (HomeRail.SeeAll) -> Unit = { f ->
+        state.updateQuery("")
+        state.clearFilters()
+        f.genre?.let(state::selectGenre)
+        f.type?.let(state::selectType)
+        f.status?.let(state::selectStatus)
+        onOpenSearch()
+    }
+
+    @Composable
+    fun rail(r: HomeRail): List<Manga>? {
+        LaunchedEffect(r) { state.loadRail(r) }
+        return (state.rails[r] as? RailState.Ready)?.items
+    }
+
+    LazyColumn(
+        state = state.homeList,
+        contentPadding = PaddingValues(bottom = bottomContentPadding()),
+        verticalArrangement = Arrangement.spacedBy(26.dp),
+        modifier = Modifier.fillMaxSize()
+    ) {
+        item(key = "header") {
+            Row(
+                Modifier.fillMaxWidth().statusBarsPadding().padding(start = 20.dp, end = 16.dp, top = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Wordmark(Modifier.weight(1f))
+                Row(
+                    Modifier
+                        .liquidGlass(RoundedCornerShape(50), 0.06f, base = Color(0x66000000))
+                        .clickable { showCategories = true }
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Outlined.Tune, contentDescription = null, tint = TextPrimary, modifier = Modifier.size(15.dp))
+                    Spacer(Modifier.width(5.dp))
+                    Text("Categories", color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Icon(Icons.Default.KeyboardArrowDown, contentDescription = null, tint = TextPrimary, modifier = Modifier.size(16.dp))
+                }
+                GlassIconButton(Icons.Outlined.Search, "Search", onOpenSearch)
+            }
         }
-        SourceChipsRow(sources, state.source, state::selectSource)
-        Dashboard(state, history, favorites, columns, onMangaSelect, { peek = it }, onContinue)
+
+        item(key = "hero") {
+            when (val hero = state.rails[HomeRail.POPULAR]) {
+                is RailState.Ready -> HeroCarousel(
+                    items = hero.items.take(6),
+                    isSaved = { it.key in savedKeys },
+                    onRead = onMangaSelect,
+                    onInfo = { peek = it },
+                    onToggleSave = { m -> scope.launch { repository.toggleBookmark(m) } }
+                )
+                is RailState.Failed -> StateMessage(
+                    icon = Icons.Default.CloudOff,
+                    title = "Couldn't load manga",
+                    message = hero.message,
+                    actionLabel = "Try again",
+                    onAction = state::refreshHome
+                )
+                else -> HeroSkeleton()
+            }
+        }
+
+        if (history.isNotEmpty()) {
+            item(key = "continue") {
+                Box(Modifier.padding(horizontal = 16.dp)) { ContinueReadingRow(history.take(10), onContinue) }
+            }
+        }
+
+        item(key = "top10") {
+            val r = HomeRail.TOP_NEW
+            TopTenRail(r.title, r.subtitle, rail(r), onMangaSelect) { peek = it }
+        }
+        item(key = "latest") {
+            val r = HomeRail.LATEST
+            PosterRail(r.title, rail(r), onMangaSelect, { peek = it }, r.subtitle)
+        }
+        if (favorites.isNotEmpty()) {
+            item(key = "mylist") { PosterRail("My List", favorites, onMangaSelect, { peek = it }) }
+        }
+        state.because?.let { rec ->
+            item(key = "because") {
+                PosterRail("Because you read ${rec.seed.title}", rec.items, onMangaSelect, { peek = it }, "More ${rec.genre} picked for you")
+            }
+        }
+        listOf(
+            HomeRail.TOP_RATED, HomeRail.ACTION, HomeRail.ROMANCE, HomeRail.FANTASY,
+            HomeRail.COMEDY, HomeRail.ISEKAI, HomeRail.MANHWA, HomeRail.COMPLETED
+        ).forEach { r ->
+            item(key = r.name) {
+                val items = rail(r)
+                // A rail that could not load is left out rather than shown empty.
+                if (state.rails[r] !is RailState.Failed) {
+                    PosterRail(r.title, items, onMangaSelect, { peek = it }, r.subtitle, r.seeAll?.let { f -> { openFiltered(f) } })
+                }
+            }
+        }
+    }
+
+    if (showCategories) {
+        FilterSheet(state, repository) {
+            showCategories = false
+            if (state.activeFilterCount > 0) onOpenSearch()
+        }
     }
 
     peek?.let { m ->
@@ -131,89 +199,3 @@ fun HomeScreen(
         )
     }
 }
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun Dashboard(
-    state: HomeState,
-    history: List<HistoryEntry>,
-    favorites: List<Manga>,
-    columns: Int,
-    onOpen: (Manga) -> Unit,
-    onPeek: (Manga) -> Unit,
-    onContinue: (HistoryEntry) -> Unit
-) {
-    val trending = state.trending
-    val hero = trending.take(5)
-    val trendingRow = if (trending.size > 8) trending.drop(5) else trending
-    val latestKeys = remember(state.latest) { state.latest.map { it.key }.toSet() }
-    val updatedFavorites = remember(favorites, latestKeys) { favorites.filter { it.key in latestKeys } }
-    val nothingLoaded = trending.isEmpty() && state.latest.isEmpty()
-
-    LazyVerticalGrid(
-        state = state.dashboardGrid,
-        columns = GridCells.Fixed(columns),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = bottomContentPadding()),
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
-        verticalArrangement = Arrangement.spacedBy(22.dp),
-        modifier = Modifier.fillMaxSize()
-    ) {
-        if (hero.isNotEmpty()) {
-            item(key = "hero", span = FullSpan) { FeaturedCarousel(hero, onOpen, onPeek, Modifier.bleed(16.dp)) }
-        } else if (state.dashboardLoading) {
-            item(key = "hero-skeleton", span = FullSpan) { FeaturedSkeleton(Modifier.bleed(16.dp)) }
-        }
-
-        if (history.isNotEmpty()) {
-            item(key = "continue", span = FullSpan) { ContinueReadingRow(history.take(10), onContinue) }
-        }
-
-        state.because?.let { rec ->
-            item(key = "because", span = FullSpan) {
-                MangaCarousel("Because you read ${rec.seed.title}", "More ${rec.genre} picked for you", rec.items, onOpen, onPeek)
-            }
-        }
-
-        if (trendingRow.isNotEmpty()) {
-            item(key = "trending", span = FullSpan) {
-                MangaCarousel("Trending today", "Most followed right now", trendingRow, onOpen, onPeek)
-            }
-        }
-
-        if (updatedFavorites.isNotEmpty()) {
-            item(key = "favorites", span = FullSpan) {
-                MangaCarousel("Recently updated favorites", "New chapters in your library", updatedFavorites, onOpen, onPeek)
-            }
-        }
-
-        if (state.hiddenGems.isNotEmpty()) {
-            item(key = "gems", span = FullSpan) {
-                MangaCarousel("Hidden gems", "Highly rated, still under the radar", state.hiddenGems, onOpen, onPeek)
-            }
-        }
-
-        when {
-            state.latest.isNotEmpty() -> {
-                item(key = "latest-header", span = FullSpan) {
-                    SectionHeader("Latest updates", subtitle = "Fresh chapters across your sources", modifier = Modifier.padding(bottom = 0.dp))
-                }
-                items(state.latest, key = { "latest:" + it.key }) { m ->
-                    MangaPosterCard(m, onClick = { onOpen(m) }, modifier = Modifier.animateItemPlacement(), onLongClick = { onPeek(m) })
-                }
-            }
-
-            state.dashboardLoading -> items(6, key = { "skeleton$it" }) { PosterSkeleton() }
-
-            nothingLoaded && state.dashboardError != null -> item(key = "error", span = FullSpan) {
-                StateMessage(
-                    icon = Icons.Default.CloudOff,
-                    title = "Couldn't load manga",
-                    message = state.dashboardError.orEmpty(),
-                    actionLabel = "Try again",
-                    onAction = state::retry
-                )
-            }
-        }
-    }
-}
-

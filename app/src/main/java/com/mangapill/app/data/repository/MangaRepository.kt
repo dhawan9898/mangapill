@@ -15,6 +15,7 @@ import com.mangapill.app.data.model.SearchFilters
 import com.mangapill.app.data.model.SourceInfo
 import com.mangapill.app.data.prefs.AppPrefs
 import com.mangapill.app.data.scraper.BaseScraper
+import com.mangapill.app.data.scraper.MangaDexScraper
 import com.mangapill.app.data.scraper.ScraperException
 import com.mangapill.app.data.scraper.SourceRegistry
 import kotlinx.coroutines.async
@@ -248,8 +249,44 @@ class MangaRepository(private val db: AppDatabase, val prefs: AppPrefs) {
         }
     }
 
+    /**
+     * A title's chapters. When its own source lists none (MangaDex has no chapters for licensed
+     * titles), the list comes from the same title on another source; those chapters carry that
+     * source in their id ([MIRROR_PREFIX]) and open there.
+     */
     suspend fun getChapterList(sourceId: String, mangaId: String, force: Boolean = false): List<Chapter> =
-        cached("chapters:$sourceId:$mangaId", 10 * 60_000L, force) { scraper(sourceId).getChapterList(mangaId) }
+        cached("chapters:$sourceId:$mangaId", 10 * 60_000L, force) {
+            val own = try {
+                Result.success(scraper(sourceId).getChapterList(mangaId))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+            val list = own.getOrNull().orEmpty()
+            if (list.isNotEmpty()) return@cached list
+            mirrorChapterList(sourceId, mangaId) ?: own.getOrThrow()
+        }
+
+    /** The chapters a source itself lists (no fallback), for looking a title up elsewhere. */
+    private suspend fun ownChapterList(sourceId: String, mangaId: String): List<Chapter> =
+        cached("own-chapters:$sourceId:$mangaId", 10 * 60_000L) { scraper(sourceId).getChapterList(mangaId) }
+
+    private suspend fun mirrorChapterList(sourceId: String, mangaId: String): List<Chapter>? {
+        val (src, id) = findMirror(sourceId, mangaId) { s, m -> ownChapterList(s, m).isNotEmpty() } ?: return null
+        val chapters = runCatching { ownChapterList(src, id) }.getOrNull().orEmpty()
+        if (chapters.isEmpty()) return null
+        return chapters.map { it.copy(id = "$MIRROR_PREFIX$src|${it.id}", mangaId = mangaId) }
+    }
+
+    // --- Home rails (MangaDex) ---------------------------------------------------------------------
+
+    /** One home-screen rail, straight from the MangaDex API (cached for 20 minutes). */
+    suspend fun homeRail(rail: HomeRail, force: Boolean = false): List<Manga> =
+        cached("home:${rail.name}", 20 * 60_000L, force) {
+            val dex = SourceRegistry["mangadex"] as? MangaDexScraper ?: throw ScraperException("MangaDex is not available")
+            dex.list(rail.query(), rail.limit).also { persist(it) }
+        }
 
     suspend fun getChapterPages(sourceId: String, chapterId: String): List<PageImage> =
         cached("pages:$sourceId:$chapterId", 30 * 60_000L) {
@@ -267,6 +304,13 @@ class MangaRepository(private val db: AppDatabase, val prefs: AppPrefs) {
      * to another source; a source that fails or has no pages for the chapter does too.
      */
     suspend fun loadChapter(sourceId: String, mangaId: String, chapterId: String, chapterNumber: Float): ChapterPages {
+        // A chapter from a borrowed chapter list (see getChapterList): open it where it came from.
+        if (chapterId.startsWith(MIRROR_PREFIX)) {
+            val rest = chapterId.removePrefix(MIRROR_PREFIX)
+            val src = rest.substringBefore('|')
+            val realId = rest.substringAfter('|')
+            return ChapterPages(getChapterPages(src, realId), servedBy = SourceRegistry.name(src))
+        }
         val own = SourceRegistry[sourceId]
         var ownError: Exception? = null
         if (own == null || own.hostsPages) {
@@ -294,6 +338,23 @@ class MangaRepository(private val db: AppDatabase, val prefs: AppPrefs) {
         // The source that worked for the previous chapter usually has this one too.
         mirrors[titleKey]?.let { (src, id) -> pagesOn(src, id, number)?.let { return it } }
 
+        val (src, id) = findMirror(sourceId, mangaId) { s, m -> pagesOn(s, m, number) != null } ?: return null
+        return pagesOn(src, id, number)
+    }
+
+    /**
+     * The same title on another source that passes [accept] (has the chapter, has chapters...):
+     * the one used last time if it still passes, otherwise the best match among the sources that
+     * serve pages, searched in parallel by the title and its alternative names.
+     */
+    private suspend fun findMirror(
+        sourceId: String,
+        mangaId: String,
+        accept: suspend (sourceId: String, mangaId: String) -> Boolean
+    ): Pair<String, String>? {
+        val titleKey = "$sourceId:$mangaId"
+        mirrors[titleKey]?.let { known -> if (runCatching { accept(known.first, known.second) }.getOrDefault(false)) return known }
+
         val seed = runCatching { getMangaDetails(sourceId, mangaId) }.getOrNull() ?: return null
         val keys = ChapterMirror.titleKeys(seed)
         val queries = ChapterMirror.queries(seed)
@@ -314,15 +375,15 @@ class MangaRepository(private val db: AppDatabase, val prefs: AppPrefs) {
         }
         // Best match first; equal scores keep the candidate order (enabled sources first).
         for ((source, manga, _) in matches.sortedByDescending { it.third }) {
-            val pages = pagesOn(source.sourceId, manga.id, number) ?: continue
+            if (!runCatching { accept(source.sourceId, manga.id) }.getOrDefault(false)) continue
             mirrors[titleKey] = source.sourceId to manga.id
-            return pages
+            return source.sourceId to manga.id
         }
         return null
     }
 
     private suspend fun pagesOn(sourceId: String, mangaId: String, number: Float): ChapterPages? = try {
-        val chapter = ChapterMirror.sameChapter(getChapterList(sourceId, mangaId), number)
+        val chapter = ChapterMirror.sameChapter(ownChapterList(sourceId, mangaId), number)
         chapter?.let { ChapterPages(getChapterPages(sourceId, it.id), servedBy = SourceRegistry.name(sourceId)) }
     } catch (e: CancellationException) {
         throw e
@@ -441,6 +502,8 @@ class MangaRepository(private val db: AppDatabase, val prefs: AppPrefs) {
         const val SINGLE_SOURCE_TIMEOUT_MS = 25_000L
         const val COOLDOWN_MS = 3 * 60_000L
         const val MIRROR_SEARCH_TIMEOUT_MS = 12_000L
+        /** Chapter ids borrowed from another source: "m|<sourceId>|<chapterId>". */
+        const val MIRROR_PREFIX = "m|"
         const val MAX_CACHE_ENTRIES = 300
         const val CACHE_TRIM_BATCH = 30
     }
