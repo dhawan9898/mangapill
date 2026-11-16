@@ -359,7 +359,7 @@ fun SettingsScreen(repository: MangaRepository) {
                                         scope.launch {
                                             updateDownloading = true
                                             updateProgress = 0f
-                                            val res = AppUpdateService.downloadAndInstallApk(context, info.apkUrl) { pct ->
+                                            val res = AppUpdateService.downloadAndInstallApk(context, info.apkUrl, info.size) { pct ->
                                                 updateProgress = pct
                                             }
                                             if (res.isFailure) {

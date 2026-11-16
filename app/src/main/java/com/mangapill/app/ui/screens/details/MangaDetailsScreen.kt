@@ -125,6 +125,18 @@ fun MangaDetailsScreen(
     val downloadStates by remember(downloads) { downloads?.states ?: MutableStateFlow<Map<String, DownloadState>>(emptyMap()) }.collectAsState()
     var removing by remember { mutableStateOf<Chapter?>(null) }
 
+    // Debounce chapter clicks to prevent rapid double taps opening multiple reader instances
+    var lastChapterClickTime by remember { mutableStateOf(0L) }
+    val safeChapterSelect: (Chapter) -> Unit = remember(onChapterSelect) {
+        { chapter ->
+            val now = android.os.SystemClock.elapsedRealtime()
+            if (now - lastChapterClickTime >= 800L) {
+                lastChapterClickTime = now
+                onChapterSelect(chapter)
+            }
+        }
+    }
+
     LaunchedEffect(sourceId, mangaId, reloadTick) {
         loading = true
         error = null
@@ -177,7 +189,7 @@ fun MangaDetailsScreen(
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             val target = remember(chapters, progress) { pickStartChapter(chapters, progress?.chapterId) }
                             PrimaryButton(
-                                onClick = { target?.let(onChapterSelect) },
+                                onClick = { target?.let(safeChapterSelect) },
                                 enabled = target != null,
                                 modifier = Modifier.weight(1f)
                             ) {
@@ -322,7 +334,7 @@ fun MangaDetailsScreen(
                         chapter = chapter,
                         isCurrent = progress?.chapterId == chapter.id,
                         isRead = progress?.let { it.chapterNumber > chapter.chapterNumber } == true,
-                        onClick = { onChapterSelect(chapter) },
+                        onClick = { safeChapterSelect(chapter) },
                         showDownload = downloads != null,
                         download = downloads?.let { downloadStates[it.keyOf(sourceId, mangaId, chapter.id)] },
                         onDownload = { repository.downloadChapter(sourceId, mangaId, chapter, chapters) },

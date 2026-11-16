@@ -17,6 +17,7 @@ data class UpdateInfo(
     val version: String,
     val releaseNotes: String,
     val apkUrl: String,
+    val size: Long? = null,
     val publishedAt: String?
 )
 
@@ -52,6 +53,7 @@ object AppUpdateService {
 
         val assets = json.optJSONArray("assets")
         var apkUrl: String? = null
+        var apkSize: Long? = null
 
         if (assets != null) {
             for (i in 0 until assets.length()) {
@@ -59,6 +61,8 @@ object AppUpdateService {
                 val name = asset.optString("name", "")
                 if (name.endsWith(".apk", ignoreCase = true)) {
                     apkUrl = asset.optString("browser_download_url", "")
+                    val s = asset.optLong("size", -1L)
+                    if (s > 0) apkSize = s
                     break
                 }
             }
@@ -73,6 +77,7 @@ object AppUpdateService {
                 version = version,
                 releaseNotes = releaseNotes,
                 apkUrl = apkUrl,
+                size = apkSize,
                 publishedAt = publishedAt
             )
         } else {
@@ -86,6 +91,7 @@ object AppUpdateService {
     suspend fun downloadAndInstallApk(
         context: Context,
         apkUrl: String,
+        expectedSize: Long? = null,
         onProgress: (Float) -> Unit
     ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
@@ -137,6 +143,16 @@ object AppUpdateService {
                     }
                     output.flush()
                 }
+            }
+
+            val expected = if (expectedSize != null && expectedSize > 0) expectedSize else totalBytes
+            if (expected > 0 && apkFile.length() < expected) {
+                apkFile.delete()
+                throw IOException("Downloaded APK size (${apkFile.length()} bytes) does not match expected size ($expected bytes). Truncated download.")
+            }
+            if (apkFile.length() < 1_000_000L) {
+                apkFile.delete()
+                throw IOException("Downloaded APK is too small (${apkFile.length()} bytes) to be valid.")
             }
 
             withContext(Dispatchers.Main) {
