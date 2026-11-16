@@ -94,9 +94,17 @@ object AppUpdateService {
                 .header("User-Agent", BaseScraper.DEFAULT_USER_AGENT)
                 .build()
 
-            val response = BaseScraper.sharedClient.newCall(request).execute()
+            // The shared client gives a whole call 30 s, which is right for a page and far too short
+            // for an APK: on a slow connection the update could never finish.
+            val client = BaseScraper.sharedClient.newBuilder()
+                .callTimeout(15, java.util.concurrent.TimeUnit.MINUTES)
+                .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+                .build()
+            val response = client.newCall(request).execute()
             if (!response.isSuccessful) {
-                throw IOException("Failed to download APK: HTTP ${response.code}")
+                val code = response.code
+                response.close()
+                throw IOException("Failed to download APK: HTTP $code")
             }
 
             val body = response.body ?: throw IOException("Empty APK download body")
@@ -110,14 +118,20 @@ object AppUpdateService {
                 FileOutputStream(apkFile).use { output ->
                     val buffer = ByteArray(8192)
                     var bytesCopied = 0L
+                    var shownPercent = -1
                     var read: Int
                     while (input.read(buffer).also { read = it } != -1) {
                         output.write(buffer, 0, read)
                         bytesCopied += read
                         if (totalBytes > 0) {
                             val progress = (bytesCopied.toFloat() / totalBytes).coerceIn(0f, 1f)
-                            withContext(Dispatchers.Main) {
-                                onProgress(progress)
+                            // Once per percent: a hop to the main thread for every 8 KB slowed the download.
+                            val percent = (progress * 100).toInt()
+                            if (percent != shownPercent) {
+                                shownPercent = percent
+                                withContext(Dispatchers.Main) {
+                                    onProgress(progress)
+                                }
                             }
                         }
                     }

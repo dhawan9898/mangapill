@@ -137,6 +137,19 @@ class ChapterDownloads(private val root: File, private val client: OkHttpClient 
         }
     }
 
+    /** Bytes used by everything saved here. Walks the files: call it off the main thread. */
+    fun sizeBytes(): Long = root.walkTopDown().filter { it.isFile }.sumOf { it.length() }
+
+    /** Stops every running download and removes every saved chapter. */
+    fun removeAll() {
+        jobs.values.forEach { it.cancel() }
+        jobs.clear()
+        scope.launch {
+            root.deleteRecursively()
+            _states.value = emptyMap()
+        }
+    }
+
     private fun fetch(page: PageImage, target: File) {
         val url = page.imageUrl.toHttpUrl()
         val request = Request.Builder()

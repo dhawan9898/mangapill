@@ -441,7 +441,22 @@ class MangaRepository(private val db: AppDatabase, val prefs: AppPrefs, val down
     suspend fun getReadingHistoryOnce(sourceId: String, mangaId: String): ReadingHistory? =
         db.historyDao().getHistoryOnce(key(sourceId, mangaId))?.toModel(mangaId)
 
-    suspend fun saveReadingHistory(sourceId: String, history: ReadingHistory) {
+    /**
+     * Runs a write to the database. These are started from the screens (a page turn, a tap on Save)
+     * with nothing to catch a failure, so a full disk or a locked database would close the app;
+     * losing one write is the lesser harm.
+     */
+    private suspend fun quietly(write: suspend () -> Unit) {
+        try {
+            write()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // not saved
+        }
+    }
+
+    suspend fun saveReadingHistory(sourceId: String, history: ReadingHistory) = quietly {
         db.historyDao().upsertHistory(
             ReadingHistoryEntity(
                 mangaId = key(sourceId, history.mangaId),
@@ -460,19 +475,19 @@ class MangaRepository(private val db: AppDatabase, val prefs: AppPrefs, val down
         }
     }
 
-    suspend fun clearHistory() = db.historyDao().clearHistory()
+    suspend fun clearHistory() = quietly { db.historyDao().clearHistory() }
 
     /** Forgets one title's reading progress (the History list's remove button). */
-    suspend fun removeFromHistory(manga: Manga) = db.historyDao().deleteHistory(manga.key)
+    suspend fun removeFromHistory(manga: Manga) = quietly { db.historyDao().deleteHistory(manga.key) }
 
-    suspend fun clearLibrary() = db.bookmarkDao().clearBookmarks()
+    suspend fun clearLibrary() = quietly { db.bookmarkDao().clearBookmarks() }
 
     // --- Bookmarks ------------------------------------------------------------------------------
 
     fun isBookmarked(sourceId: String, mangaId: String): Flow<Boolean> =
         db.bookmarkDao().getBookmark(key(sourceId, mangaId)).map { it != null }
 
-    suspend fun toggleBookmark(manga: Manga) {
+    suspend fun toggleBookmark(manga: Manga) = quietly {
         val dao = db.bookmarkDao()
         val k = manga.key
         if (dao.getBookmarkOnce(k) != null) {

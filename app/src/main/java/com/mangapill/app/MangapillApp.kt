@@ -5,6 +5,7 @@ import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
+import com.mangapill.app.data.CrashLog
 import com.mangapill.app.data.download.ChapterDownloads
 import com.mangapill.app.data.local.AppDatabase
 import com.mangapill.app.data.prefs.AppPrefs
@@ -17,6 +18,12 @@ class MangapillApp : Application(), ImageLoaderFactory {
     val repository: MangaRepository by lazy {
         // Downloads live in filesDir, not the cache: clearing the image cache must not remove them.
         MangaRepository(AppDatabase.getInstance(this), AppPrefs(this), ChapterDownloads(filesDir.resolve("downloads")))
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        val version = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull() ?: "?"
+        CrashLog.install(filesDir, version)
     }
 
     /**

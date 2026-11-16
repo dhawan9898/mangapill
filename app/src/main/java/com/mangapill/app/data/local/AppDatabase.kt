@@ -14,7 +14,9 @@ import androidx.room.TypeConverters
         BookmarkEntity::class
     ],
     version = 1,
-    exportSchema = false
+    // Schemas are written to app/schemas (committed): a table change must come with a Migration
+    // written against them, or everyone's library and history is wiped by the fallback below.
+    exportSchema = true
 )
 @TypeConverters(DatabaseConverters::class)
 abstract class AppDatabase : RoomDatabase() {

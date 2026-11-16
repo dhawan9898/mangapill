@@ -4,6 +4,13 @@ plugins {
     alias(libs.plugins.kotlin.ksp)
 }
 
+// The release key is not in the repository. CI restores it from repository secrets and passes it
+// through these variables; for a signed local build, set the same ones. Without them the release
+// APK is left unsigned.
+val releaseKeystore: String? = System.getenv("KEYSTORE_FILE")
+val releaseKeyPassword: String? = System.getenv("KEYSTORE_PASSWORD")
+val hasReleaseKey = releaseKeyPassword != null && releaseKeystore?.let { file(it).exists() } == true
+
 android {
     namespace = "com.mangapill.app"
     compileSdk = 34
@@ -22,20 +29,21 @@ android {
         }
     }
 
-    // All releases are signed with the keystore committed in this (private) repo, so every new APK
-    // installs over the previous one as an update. Env vars can override it.
+    // Every release is signed with the same key, so each new APK installs over the previous one.
     signingConfigs {
-        create("release") {
-            storeFile = file(System.getenv("MANGAPILL_KEYSTORE_FILE") ?: "mangapill-release.jks")
-            storePassword = System.getenv("MANGAPILL_KEYSTORE_PASSWORD") ?: "mangapill-store"
-            keyAlias = System.getenv("MANGAPILL_KEY_ALIAS") ?: "mangapill"
-            keyPassword = System.getenv("MANGAPILL_KEY_PASSWORD") ?: "mangapill-store"
+        if (hasReleaseKey) {
+            create("release") {
+                storeFile = file(releaseKeystore!!)
+                storePassword = releaseKeyPassword
+                keyAlias = System.getenv("KEY_ALIAS") ?: "mangapill"
+                keyPassword = System.getenv("KEY_PASSWORD") ?: releaseKeyPassword
+            }
         }
     }
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("release")
+            signingConfig = signingConfigs.findByName("release")
             isMinifyEnabled = false
         }
     }
@@ -61,6 +69,10 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+}
+
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
 
 dependencies {

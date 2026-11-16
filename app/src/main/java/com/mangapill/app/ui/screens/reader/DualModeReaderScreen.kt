@@ -261,7 +261,7 @@ private fun ReaderContent(
                 }
                 LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                     itemsIndexed(pages, key = { _, p -> p.pageNumber }) { _, page ->
-                        PageImageView(page, ContentScale.FillWidth, Modifier.fillMaxWidth(), minHeight = 480)
+                        PageImageView(page, ContentScale.FillWidth, Modifier.fillMaxWidth(), minHeight = 480, tallStrip = true)
                     }
                     item {
                         ChapterEndCard(nextChapter, onOpenChapter)
@@ -407,10 +407,12 @@ private fun ReaderContent(
 }
 
 @Composable
-private fun PageImageView(page: PageImage, scale: ContentScale, modifier: Modifier, minHeight: Int) {
+private fun PageImageView(page: PageImage, scale: ContentScale, modifier: Modifier, minHeight: Int, tallStrip: Boolean = false) {
     val context = LocalContext.current
     var attempt by remember { mutableIntStateOf(0) }
-    val request = remember(page.imageUrl, attempt) { pageRequest(context, page, attempt) }
+    // Webtoon pages have no height limit of their own; see pageRequest.
+    val maxWidth = if (tallStrip) context.resources.displayMetrics.widthPixels else 0
+    val request = remember(page.imageUrl, attempt, maxWidth) { pageRequest(context, page, attempt, maxWidth) }
     val sizeModifier = if (minHeight > 0) modifier.height(minHeight.dp) else modifier
 
     SubcomposeAsyncImage(
@@ -453,10 +455,22 @@ private fun ChapterEndCard(next: Chapter?, onOpen: (Chapter) -> Unit) {
 
 private const val PREFETCH_PAGES = 4
 
-private fun pageRequest(context: Context, page: PageImage, attempt: Int = 0): ImageRequest =
+/** Tallest a webtoon strip is decoded: at screen width this stays well under the 100 MB Android will draw. */
+private const val MAX_STRIP_HEIGHT_PX = 12_000
+
+/**
+ * [maxWidthPx] > 0 (webtoon mode): the page is decoded to fit that width and [MAX_STRIP_HEIGHT_PX].
+ * Left to its own size, one very long strip becomes a bitmap of more than 100 MB, and drawing it
+ * closes the app ("Canvas: trying to draw too large bitmap"); capped, it is only a little softer.
+ */
+private fun pageRequest(context: Context, page: PageImage, attempt: Int = 0, maxWidthPx: Int = 0): ImageRequest =
     ImageRequest.Builder(context)
         .data(page.imageUrl)
         .apply {
+            if (maxWidthPx > 0) {
+                size(maxWidthPx, MAX_STRIP_HEIGHT_PX)
+                scale(coil.size.Scale.FIT)
+            }
             page.referer?.let { addHeader("Referer", it) }
             // A retry must bypass the memory cache entry of the failed attempt.
             if (attempt > 0) setParameter("retry", attempt)

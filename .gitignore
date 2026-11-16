@@ -9,3 +9,8 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Release signing key: kept in repository secrets, never committed
+*.jks
+*.p12
+*.keystore

@@ -18,6 +18,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AutoStories
 import androidx.compose.material.icons.outlined.BookmarkRemove
+import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.CloudDownload
 import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.Image
@@ -92,6 +93,16 @@ fun SettingsScreen(repository: MangaRepository) {
     LaunchedEffect(cacheTick) {
         cacheBytes = withContext(Dispatchers.IO) { context.imageLoader.diskCache?.size }
     }
+    val downloads = repository.downloads
+    val downloadStates by remember(downloads) {
+        downloads?.states ?: kotlinx.coroutines.flow.MutableStateFlow<Map<String, com.mangapill.app.data.download.DownloadState>>(emptyMap())
+    }.collectAsState()
+    var downloadBytes by remember { mutableStateOf<Long?>(null) }
+    LaunchedEffect(downloadStates) {
+        downloadBytes = withContext(Dispatchers.IO) { downloads?.sizeBytes() }
+    }
+    var crashReport by remember { mutableStateOf(com.mangapill.app.data.CrashLog.read(context.filesDir)) }
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
     val version = remember {
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "?"
     }
@@ -220,6 +231,31 @@ fun SettingsScreen(repository: MangaRepository) {
                     },
                     trailing = cacheBytes?.let { formatBytes(it) }
                 )
+                if (downloads != null) {
+                    CardDivider()
+                    ActionRow(
+                        Icons.Outlined.CloudDownload,
+                        "Remove downloaded chapters",
+                        "Frees the space used by chapters saved for offline reading. Single chapters are removed from a title's page.",
+                        onClick = if ((downloadBytes ?: 0L) == 0L) null else ({ confirm = Confirm.DOWNLOADS }),
+                        danger = (downloadBytes ?: 0L) > 0L,
+                        trailing = downloadBytes?.takeIf { it > 0L }?.let { formatBytes(it) }
+                    )
+                }
+                crashReport?.let { report ->
+                    CardDivider()
+                    ActionRow(
+                        Icons.Outlined.BugReport,
+                        "Copy last crash report",
+                        "The app closed unexpectedly earlier. Copies what happened so it can be sent to the developer.",
+                        onClick = {
+                            clipboard.setText(androidx.compose.ui.text.AnnotatedString(report))
+                            com.mangapill.app.data.CrashLog.clear(context.filesDir)
+                            crashReport = null
+                            Toast.makeText(context, "Crash report copied", Toast.LENGTH_SHORT).show()
+                        }
+                    )
+                }
             }
 
             Spacer(Modifier.height(26.dp))
@@ -388,11 +424,21 @@ fun SettingsScreen(repository: MangaRepository) {
             },
             onDismiss = { confirm = null }
         )
+        Confirm.DOWNLOADS -> ConfirmDialog(
+            title = "Remove downloaded chapters?",
+            message = "Every chapter saved for offline reading will be removed. Your library and history are kept.",
+            confirmLabel = "Remove",
+            onConfirm = {
+                confirm = null
+                downloads?.removeAll()
+            },
+            onDismiss = { confirm = null }
+        )
         null -> Unit
     }
 }
 
-private enum class Confirm { HISTORY, LIBRARY }
+private enum class Confirm { HISTORY, LIBRARY, DOWNLOADS }
 
 private fun formatBytes(bytes: Long): String = when {
     bytes >= 1L shl 30 -> "%.1f GB".format(bytes / (1L shl 30).toDouble())
