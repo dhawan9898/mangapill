@@ -30,6 +30,8 @@ class MangapillApp : Application(), ImageLoaderFactory {
 
         return ImageLoader.Builder(this)
             .okHttpClient(client)
+            .bitmapConfig(android.graphics.Bitmap.Config.RGB_565)
+            .allowRgb565(true)
             .memoryCache { MemoryCache.Builder(this).maxSizePercent(0.25).build() }
             // Big disk cache: this is what makes prefetched chapters readable offline.
             .diskCache { DiskCache.Builder().directory(cacheDir.resolve("image_cache")).maxSizeBytes(512L * 1024 * 1024).build() }

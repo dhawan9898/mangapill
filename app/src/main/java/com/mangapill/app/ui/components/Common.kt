@@ -239,7 +239,9 @@ fun StateMessage(
     message: String,
     modifier: Modifier = Modifier,
     actionLabel: String? = null,
-    onAction: (() -> Unit)? = null
+    onAction: (() -> Unit)? = null,
+    secondaryActionLabel: String? = null,
+    onSecondaryAction: (() -> Unit)? = null
 ) {
     // Same layout as the empty / error states of AniStream and CineStream: a red icon, a bold title,
     // the explanation and a plain "Try again" pill.
@@ -254,7 +256,12 @@ fun StateMessage(
         Text(message, color = TextSecondary, fontSize = 13.sp, textAlign = TextAlign.Center, lineHeight = 19.sp)
         if (actionLabel != null && onAction != null) {
             Spacer(Modifier.height(6.dp))
-            PillButton(actionLabel, onAction, icon = Icons.Default.Refresh)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                PillButton(actionLabel, onAction, icon = Icons.Default.Refresh)
+                if (secondaryActionLabel != null && onSecondaryAction != null) {
+                    PillButton(secondaryActionLabel, onSecondaryAction)
+                }
+            }
         }
     }
 }

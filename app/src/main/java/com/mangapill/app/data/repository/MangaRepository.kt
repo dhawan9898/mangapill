@@ -281,11 +281,18 @@ class MangaRepository(private val db: AppDatabase, val prefs: AppPrefs) {
 
     // --- Home rails (MangaDex) ---------------------------------------------------------------------
 
-    /** One home-screen rail, straight from the MangaDex API (cached for 20 minutes). */
+    /** One home-screen rail, straight from the MangaDex API (cached for 20 minutes). Falls back to cached titles if offline. */
     suspend fun homeRail(rail: HomeRail, force: Boolean = false): List<Manga> =
-        cached("home:${rail.name}", 20 * 60_000L, force) {
-            val dex = SourceRegistry["mangadex"] as? MangaDexScraper ?: throw ScraperException("MangaDex is not available")
-            dex.list(rail.query(), rail.limit).also { persist(it) }
+        try {
+            cached("home:${rail.name}", 20 * 60_000L, force) {
+                val dex = SourceRegistry["mangadex"] as? MangaDexScraper ?: throw ScraperException("MangaDex is not available")
+                dex.list(rail.query(), rail.limit).also { persist(it) }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            val fallback = db.mangaDao().getRecentManga(rail.limit).map { it.toManga() }
+            if (fallback.isNotEmpty()) fallback else throw e
         }
 
     suspend fun getChapterPages(sourceId: String, chapterId: String): List<PageImage> =

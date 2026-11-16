@@ -19,6 +19,9 @@ interface MangaDao {
 
     @Query("SELECT * FROM mangas WHERE title LIKE '%' || :query || '%'")
     suspend fun searchMangas(query: String): List<MangaEntity>
+
+    @Query("SELECT * FROM mangas ORDER BY cachedAt DESC LIMIT :limit")
+    suspend fun getRecentManga(limit: Int): List<MangaEntity>
 }
 
 @Dao

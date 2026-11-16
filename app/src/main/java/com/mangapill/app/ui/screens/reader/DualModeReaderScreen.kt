@@ -229,14 +229,25 @@ private fun ReaderContent(
         when {
             loading -> CircularProgressIndicator(color = PurpleAccent, modifier = Modifier.align(Alignment.Center))
 
-            error != null -> StateMessage(
-                icon = Icons.Default.CloudOff,
-                title = "Couldn't load chapter",
-                message = error.orEmpty(),
-                modifier = Modifier.align(Alignment.Center),
-                actionLabel = "Try again",
-                onAction = { reloadTick++ }
-            )
+            error != null -> {
+                val isOfflineOrSlow = error.orEmpty().contains("network", ignoreCase = true) ||
+                    error.orEmpty().contains("internet", ignoreCase = true) ||
+                    error.orEmpty().contains("timeout", ignoreCase = true) ||
+                    error.orEmpty().contains("reach", ignoreCase = true)
+
+                StateMessage(
+                    icon = Icons.Default.CloudOff,
+                    title = if (isOfflineOrSlow) "Slow or Offline Network" else "Couldn't load chapter",
+                    message = if (isOfflineOrSlow)
+                        "Network is slow or disconnected. You can retry, or return to read saved chapters from your library."
+                    else error.orEmpty(),
+                    modifier = Modifier.align(Alignment.Center),
+                    actionLabel = "Try again",
+                    onAction = { reloadTick++ },
+                    secondaryActionLabel = if (isOfflineOrSlow) "Go to Library" else null,
+                    onSecondaryAction = if (isOfflineOrSlow) onBack else null
+                )
+            }
 
             pages.isEmpty() -> Box(Modifier.fillMaxSize())
 
