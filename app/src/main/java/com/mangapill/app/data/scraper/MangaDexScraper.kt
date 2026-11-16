@@ -16,7 +16,7 @@ class MangaDexScraper : BaseScraper() {
     override val sourceId = "mangadex"
     override val sourceName = "MangaDex"
     override val baseUrl = "https://api.mangadex.org"
-    override val userAgent = "MangapillApp/1.0 (Android)"
+    override val userAgent = APP_USER_AGENT
 
     private val coverBase = "https://uploads.mangadex.org/covers"
     private val listFilters = "includes[]=cover_art&contentRating[]=safe&contentRating[]=suggestive" +

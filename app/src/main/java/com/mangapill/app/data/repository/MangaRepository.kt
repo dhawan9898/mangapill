@@ -1,5 +1,6 @@
 package com.mangapill.app.data.repository
 
+import com.mangapill.app.data.download.ChapterDownloads
 import com.mangapill.app.data.local.AppDatabase
 import com.mangapill.app.data.local.BookmarkEntity
 import com.mangapill.app.data.local.MangaEntity
@@ -59,7 +60,7 @@ data class SourceResults(
 
 data class Recommendation(val seed: Manga, val genre: String, val items: List<Manga>)
 
-class MangaRepository(private val db: AppDatabase, val prefs: AppPrefs) {
+class MangaRepository(private val db: AppDatabase, val prefs: AppPrefs, val downloads: ChapterDownloads? = null) {
 
     /** Built-in sources plus the user's OPDS servers; re-read after servers are added or removed. */
     val sources: List<SourceInfo>
@@ -255,6 +256,16 @@ class MangaRepository(private val db: AppDatabase, val prefs: AppPrefs) {
      * source in their id ([MIRROR_PREFIX]) and open there.
      */
     suspend fun getChapterList(sourceId: String, mangaId: String, force: Boolean = false): List<Chapter> =
+        try {
+            onlineChapterList(sourceId, mangaId, force)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Offline / blocked: a title with downloaded chapters still lists them.
+            downloads?.savedChapterList(sourceId, mangaId) ?: throw e
+        }
+
+    private suspend fun onlineChapterList(sourceId: String, mangaId: String, force: Boolean): List<Chapter> =
         cached("chapters:$sourceId:$mangaId", 10 * 60_000L, force) {
             val own = try {
                 Result.success(scraper(sourceId).getChapterList(mangaId))
@@ -302,6 +313,13 @@ class MangaRepository(private val db: AppDatabase, val prefs: AppPrefs) {
             pages
         }
 
+    /** Saves a chapter for offline reading (see [ChapterDownloads]); progress shows up in `downloads.states`. */
+    fun downloadChapter(sourceId: String, mangaId: String, chapter: Chapter, chapters: List<Chapter>) {
+        downloads?.download(sourceId, mangaId, chapter, chapters) {
+            loadChapter(sourceId, mangaId, chapter.id, chapter.chapterNumber).pages
+        }
+    }
+
     /** Title (sourceId:mangaId) -> where its chapters were last found on another source. */
     private val mirrors = ConcurrentHashMap<String, Pair<String, String>>()
 
@@ -311,6 +329,8 @@ class MangaRepository(private val db: AppDatabase, val prefs: AppPrefs) {
      * to another source; a source that fails or has no pages for the chapter does too.
      */
     suspend fun loadChapter(sourceId: String, mangaId: String, chapterId: String, chapterNumber: Float): ChapterPages {
+        // A downloaded chapter is read from the device, with or without a connection.
+        downloads?.localPages(sourceId, mangaId, chapterId)?.let { return ChapterPages(it) }
         // A chapter from a borrowed chapter list (see getChapterList): open it where it came from.
         if (chapterId.startsWith(MIRROR_PREFIX)) {
             val rest = chapterId.removePrefix(MIRROR_PREFIX)

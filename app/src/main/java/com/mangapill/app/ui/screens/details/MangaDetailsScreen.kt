@@ -26,11 +26,18 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.DownloadDone
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SwapVert
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -56,6 +63,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.mangapill.app.data.download.DownloadState
 import com.mangapill.app.data.model.Chapter
 import com.mangapill.app.data.model.Manga
 import com.mangapill.app.data.model.MangaStatus
@@ -84,6 +92,7 @@ import com.mangapill.app.ui.theme.TextMuted
 import com.mangapill.app.ui.theme.TextPrimary
 import com.mangapill.app.ui.theme.TextSecondary
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -110,6 +119,11 @@ fun MangaDetailsScreen(
 
     val progress by remember(sourceId, mangaId) { repository.getReadingHistory(sourceId, mangaId) }.collectAsState(initial = null)
     val bookmarked by remember(sourceId, mangaId) { repository.isBookmarked(sourceId, mangaId) }.collectAsState(initial = false)
+
+    // Offline downloads: state per chapter, and the chapter whose removal is being confirmed.
+    val downloads = repository.downloads
+    val downloadStates by remember(downloads) { downloads?.states ?: MutableStateFlow<Map<String, DownloadState>>(emptyMap()) }.collectAsState()
+    var removing by remember { mutableStateOf<Chapter?>(null) }
 
     LaunchedEffect(sourceId, mangaId, reloadTick) {
         loading = true
@@ -237,16 +251,32 @@ fun MangaDetailsScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text("Chapters (${chapters.size})", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = TextPrimary)
-                            Row(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .clickable { newestFirst = !newestFirst }
-                                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(Icons.Default.SwapVert, contentDescription = null, tint = PurpleAccent, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text(if (newestFirst) "Newest" else "Oldest", color = TextSecondary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                // Saves every chapter listed below (all of them, or the ones the filter shows).
+                                if (downloads != null && visibleChapters.isNotEmpty()) {
+                                    Row(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .clickable { visibleChapters.forEach { repository.downloadChapter(sourceId, mangaId, it, chapters) } }
+                                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(Icons.Default.Download, contentDescription = null, tint = PurpleAccent, modifier = Modifier.size(16.dp))
+                                        Spacer(Modifier.width(4.dp))
+                                        Text("Download all", color = TextSecondary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                    }
+                                }
+                                Row(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .clickable { newestFirst = !newestFirst }
+                                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.SwapVert, contentDescription = null, tint = PurpleAccent, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(if (newestFirst) "Newest" else "Oldest", color = TextSecondary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                }
                             }
                         }
                         if (chapters.isNotEmpty()) {
@@ -292,12 +322,35 @@ fun MangaDetailsScreen(
                         chapter = chapter,
                         isCurrent = progress?.chapterId == chapter.id,
                         isRead = progress?.let { it.chapterNumber > chapter.chapterNumber } == true,
-                        onClick = { onChapterSelect(chapter) }
+                        onClick = { onChapterSelect(chapter) },
+                        showDownload = downloads != null,
+                        download = downloads?.let { downloadStates[it.keyOf(sourceId, mangaId, chapter.id)] },
+                        onDownload = { repository.downloadChapter(sourceId, mangaId, chapter, chapters) },
+                        // A finished download is only removed after asking; one in progress just stops.
+                        onRemove = { state ->
+                            if (state is DownloadState.Done) removing = chapter
+                            else downloads?.remove(sourceId, mangaId, chapter.id)
+                        }
                     )
                 }
 
                 item { Spacer(Modifier.height(24.dp)) }
             }
+        }
+
+        removing?.let { chapter ->
+            AlertDialog(
+                onDismissRequest = { removing = null },
+                title = { Text("Remove download?") },
+                text = { Text("Chapter ${formatChapterNumber(chapter.chapterNumber)} will no longer be available offline.") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        downloads?.remove(sourceId, mangaId, chapter.id)
+                        removing = null
+                    }) { Text("Remove") }
+                },
+                dismissButton = { TextButton(onClick = { removing = null }) { Text("Keep") } }
+            )
         }
 
         // Floating back button, above everything else.
@@ -367,7 +420,16 @@ private fun Hero(manga: Manga) {
 }
 
 @Composable
-private fun ChapterRow(chapter: Chapter, isCurrent: Boolean, isRead: Boolean, onClick: () -> Unit) {
+private fun ChapterRow(
+    chapter: Chapter,
+    isCurrent: Boolean,
+    isRead: Boolean,
+    onClick: () -> Unit,
+    showDownload: Boolean = false,
+    download: DownloadState? = null,
+    onDownload: () -> Unit = {},
+    onRemove: (DownloadState) -> Unit = {}
+) {
     val shape = RoundedCornerShape(12.dp)
     Row(
         modifier = Modifier
@@ -399,6 +461,38 @@ private fun ChapterRow(chapter: Chapter, isCurrent: Boolean, isRead: Boolean, on
             Icon(Icons.Default.CheckCircle, contentDescription = "Read", tint = EmeraldStatus, modifier = Modifier.size(16.dp))
         } else {
             chapter.releaseDate?.let { Text(it, fontSize = 11.sp, color = TextMuted) }
+        }
+        if (showDownload) {
+            Spacer(Modifier.width(6.dp))
+            DownloadControl(download, onDownload, onRemove)
+        }
+    }
+}
+
+/** Download / progress (tap to stop) / downloaded (tap to remove) / failed (tap to try again). */
+@Composable
+private fun DownloadControl(state: DownloadState?, onDownload: () -> Unit, onRemove: (DownloadState) -> Unit) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(10.dp))
+            .clickable { if (state == null || state is DownloadState.Failed) onDownload() else onRemove(state) }
+            .padding(6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        when (state) {
+            null -> Icon(Icons.Default.Download, contentDescription = "Download chapter", tint = TextSecondary, modifier = Modifier.size(20.dp))
+            is DownloadState.Running -> {
+                if (state.total > 0) {
+                    Text("${state.done}/${state.total}", fontSize = 11.sp, color = TextSecondary)
+                    Spacer(Modifier.width(6.dp))
+                }
+                Box(contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = PurpleAccent, strokeWidth = 2.dp, modifier = Modifier.size(20.dp))
+                    Icon(Icons.Default.Close, contentDescription = "Stop download", tint = TextSecondary, modifier = Modifier.size(10.dp))
+                }
+            }
+            is DownloadState.Done -> Icon(Icons.Default.DownloadDone, contentDescription = "Downloaded. Tap to remove", tint = EmeraldStatus, modifier = Modifier.size(20.dp))
+            is DownloadState.Failed -> Icon(Icons.Default.ErrorOutline, contentDescription = "Download failed. Tap to try again", tint = Color(0xFFE5484D), modifier = Modifier.size(20.dp))
         }
     }
 }

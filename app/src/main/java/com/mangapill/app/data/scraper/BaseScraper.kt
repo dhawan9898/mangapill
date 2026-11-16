@@ -197,6 +197,19 @@ abstract class BaseScraper {
             "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) " +
                 "Chrome/124.0.0.0 Mobile Safari/537.36"
 
+        /** Sent to hosts that turn away browser User-Agents coming from something that is not a browser. */
+        const val APP_USER_AGENT = "MangapillApp/1.0 (Android)"
+
+        /**
+         * User-Agent for an image request to [host]. Most CDNs want a browser one; MangaDex answers a
+         * browser User-Agent with a redirect to its bot challenge page, so its hosts get the app's own.
+         */
+        fun imageUserAgent(host: String): String {
+            val h = host.lowercase()
+            val mangaDex = h == "mangadex.org" || h.endsWith(".mangadex.org") || h.endsWith(".mangadex.network")
+            return if (mangaDex) APP_USER_AGENT else DEFAULT_USER_AGENT
+        }
+
         private val IMAGE_ATTRS = listOf("data-src", "data-lazy-src", "data-original", "data-cfsrc", "src")
 
         /** One client for all sources so connections and DNS are shared. */
