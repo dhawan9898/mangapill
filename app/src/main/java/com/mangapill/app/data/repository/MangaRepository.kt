@@ -446,9 +446,14 @@ class MangaRepository(private val db: AppDatabase, val prefs: AppPrefs, val down
      * with nothing to catch a failure, so a full disk or a locked database would close the app;
      * losing one write is the lesser harm.
      */
+    /** Called after the library, reading progress or history changed (sync to the user's account). */
+    @Volatile
+    var onLibraryChanged: (() -> Unit)? = null
+
     private suspend fun quietly(write: suspend () -> Unit) {
         try {
             write()
+            onLibraryChanged?.invoke()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

@@ -24,6 +24,10 @@ android {
         versionName = (project.findProperty("versionName") as String?) ?: "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // Sign-in and sync (the Supabase project shared with AniStream and CineStream). Both values
+        // are public by design; without them the account section stays hidden.
+        buildConfigField("String", "SUPABASE_URL", "\"${System.getenv("SUPABASE_URL") ?: ""}\"")
+        buildConfigField("String", "SUPABASE_KEY", "\"${System.getenv("SUPABASE_ANON_KEY") ?: ""}\"")
         vectorDrawables {
             useSupportLibrary = true
         }
@@ -56,6 +60,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.8"

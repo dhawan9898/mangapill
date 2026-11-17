@@ -259,6 +259,7 @@ fun SettingsScreen(repository: MangaRepository) {
             }
 
             Spacer(Modifier.height(26.dp))
+            CloudAccountCard((context.applicationContext as com.mangapill.app.MangapillApp).cloud)
             SectionLabel("App Updates")
             SettingsCard {
                 Column(Modifier.padding(16.dp)) {

@@ -11,6 +11,8 @@ import com.mangapill.app.data.local.AppDatabase
 import com.mangapill.app.data.prefs.AppPrefs
 import com.mangapill.app.data.repository.MangaRepository
 import com.mangapill.app.data.scraper.BaseScraper
+import com.mangapill.app.data.sync.CloudSync
+import com.mangapill.app.data.sync.LibrarySync
 
 class MangapillApp : Application(), ImageLoaderFactory {
 
@@ -18,6 +20,12 @@ class MangapillApp : Application(), ImageLoaderFactory {
     val repository: MangaRepository by lazy {
         // Downloads live in filesDir, not the cache: clearing the image cache must not remove them.
         MangaRepository(AppDatabase.getInstance(this), AppPrefs(this), ChapterDownloads(filesDir.resolve("downloads")))
+    }
+
+    /** The user's account: syncs reading progress, My List and settings between devices. */
+    val cloud: CloudSync by lazy {
+        LibrarySync.create(this, BuildConfig.SUPABASE_URL, BuildConfig.SUPABASE_KEY, AppDatabase.getInstance(this), repository.prefs)
+            .also { sync -> repository.onLibraryChanged = { sync.schedule() } }
     }
 
     override fun onCreate() {

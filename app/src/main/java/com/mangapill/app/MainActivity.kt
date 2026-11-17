@@ -40,6 +40,17 @@ import com.mangapill.app.ui.screens.settings.SettingsScreen
 import com.mangapill.app.ui.theme.MangapillTheme
 
 class MainActivity : ComponentActivity() {
+    // Back in front: pick up what other devices did. Leaving: send what was read here.
+    override fun onStart() {
+        super.onStart()
+        (application as MangapillApp).cloud.schedule(delayMs = 0)
+    }
+
+    override fun onStop() {
+        (application as MangapillApp).cloud.schedule(delayMs = 0)
+        super.onStop()
+    }
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
