@@ -42,6 +42,9 @@ import com.mangapill.app.data.repository.HomeRail
 import com.mangapill.app.data.repository.MangaRepository
 import com.mangapill.app.ui.components.StateMessage
 import com.mangapill.app.ui.components.Wordmark
+import androidx.compose.ui.platform.LocalContext
+import com.mangapill.app.MangapillApp
+import com.mangapill.app.ui.screens.settings.AccountButton
 import com.mangapill.app.ui.components.glass.GlassIconButton
 import com.mangapill.app.ui.components.glass.liquidGlass
 import com.mangapill.app.ui.components.manga.IntroCardSheet
@@ -116,7 +119,8 @@ fun HomeScreen(
                     Text("Categories", color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                     Icon(Icons.Default.KeyboardArrowDown, contentDescription = null, tint = TextPrimary, modifier = Modifier.size(16.dp))
                 }
-                GlassIconButton(Icons.Outlined.Search, "Search", onOpenSearch)
+                val cloud = (LocalContext.current.applicationContext as MangapillApp).cloud
+                AccountButton(cloud)
             }
         }
 

@@ -281,22 +281,26 @@ fun TopTenRail(title: String, subtitle: String?, items: List<Manga>?, onOpen: (M
             } else {
                 itemsIndexed(items.take(10), key = { _, m -> "top:" + m.key }) { i, m ->
                     Box(Modifier.width(158.dp).height(172.dp).combinedClickable(onClick = { onOpen(m) }, onLongClick = { onPeek(m) })) {
-                        Text(
-                            "${i + 1}",
-                            style = TextStyle(
-                                fontSize = 130.sp,
-                                fontWeight = FontWeight.Black,
-                                color = TextMuted,
-                                drawStyle = Stroke(width = 5f)
-                            ),
-                            modifier = Modifier.align(Alignment.BottomStart).offset(x = (-6).dp, y = 22.dp)
-                        )
                         Box(
                             Modifier.align(Alignment.CenterEnd).width(112.dp).height(168.dp)
                                 .clip(RoundedCornerShape(14.dp)).border(1.dp, IridescentBorder, RoundedCornerShape(14.dp))
                         ) {
                             MangaCover(m, Modifier.fillMaxSize())
                         }
+                        Text(
+                            "${i + 1}",
+                            style = TextStyle(
+                                fontSize = 120.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color.White,
+                                shadow = androidx.compose.ui.graphics.Shadow(
+                                    color = Color.Black.copy(alpha = 0.9f),
+                                    offset = androidx.compose.ui.geometry.Offset(2f, 4f),
+                                    blurRadius = 14f
+                                )
+                            ),
+                            modifier = Modifier.align(Alignment.BottomStart).offset(x = (-4).dp, y = 20.dp)
+                        )
                     }
                 }
             }

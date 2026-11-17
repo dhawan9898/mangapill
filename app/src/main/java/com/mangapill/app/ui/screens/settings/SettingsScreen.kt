@@ -114,7 +114,12 @@ fun SettingsScreen(repository: MangaRepository) {
     var updateStatus by remember { mutableStateOf<String?>(null) }
 
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
-        ScreenHeader("Settings")
+        ScreenHeader(
+            "Settings",
+            trailing = {
+                AccountButton((context.applicationContext as com.mangapill.app.MangapillApp).cloud)
+            }
+        )
         Column(
             Modifier
                 .fillMaxSize()
@@ -259,7 +264,6 @@ fun SettingsScreen(repository: MangaRepository) {
             }
 
             Spacer(Modifier.height(26.dp))
-            CloudAccountCard((context.applicationContext as com.mangapill.app.MangapillApp).cloud)
             SectionLabel("App Updates")
             SettingsCard {
                 Column(Modifier.padding(16.dp)) {

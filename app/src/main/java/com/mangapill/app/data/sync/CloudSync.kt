@@ -234,6 +234,26 @@ class CloudSync(
         if (bearer != null) runCatching { request("/auth/v1/logout", "POST", token = bearer) }
     }
 
+    /** Verifies a 6-digit confirmation code from an email without opening a link. */
+    suspend fun verifyOtp(email: String, token: String) {
+        val cleanToken = token.trim()
+        val bodySignup = JSONObject().put("type", "signup").put("email", email.trim()).put("token", cleanToken)
+        val bodyEmail = JSONObject().put("type", "email").put("email", email.trim()).put("token", cleanToken)
+        val res = try {
+            request("/auth/v1/verify", "POST", bodySignup)
+        } catch (_: Exception) {
+            request("/auth/v1/verify", "POST", bodyEmail)
+        }
+        adopt(res) ?: throw CloudException("Verification failed. Invalid or expired code.")
+        syncNow()
+    }
+
+    /** Resends the signup confirmation email / code. */
+    suspend fun resendOtp(email: String) {
+        val body = JSONObject().put("type", "signup").put("email", email.trim())
+        request("/auth/v1/resend", "POST", body)
+    }
+
     private companion object {
         const val SESSION = "cloud_session"
         const val BASE = "cloud_base"
