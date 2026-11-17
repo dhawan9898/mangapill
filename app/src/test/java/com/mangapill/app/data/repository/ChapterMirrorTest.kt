@@ -19,6 +19,16 @@ class ChapterMirrorTest {
         assertEquals(100, ChapterMirror.score("Na Honjaman Level-up", keys))
     }
 
+    @Test fun romanisationVariantsAreTheSameTitle() {
+        // MangaDex: "Koi o Suru", Mangapill: "Koi wo Suru" - the same title; it was not found at all.
+        val keys = ChapterMirror.titleKeys(manga("My Dress-Up Darling", listOf("Sono Bisque Doll wa Koi o Suru")))
+        assertEquals(100, ChapterMirror.score("Sono Bisque Doll wa Koi wo Suru", keys))
+        assertEquals(100, ChapterMirror.score("Sono Bisque Doll ha Koi wo Suru", keys))
+        assertEquals(100, ChapterMirror.score("Shōjo Shūmatsu Ryokō", ChapterMirror.titleKeys(manga("Shoujo Shuumatsu Ryokou", emptyList()))))
+        // ...but a different title still is not.
+        assertEquals(0, ChapterMirror.score("Bisque Doll de Chu", keys))
+    }
+
     @Test fun sequelsSpinOffsAndNovelsAreNotTheSameTitle() {
         val keys = ChapterMirror.titleKeys(solo)
         assertEquals(0, ChapterMirror.score("Solo Leveling: Ragnarok", keys))

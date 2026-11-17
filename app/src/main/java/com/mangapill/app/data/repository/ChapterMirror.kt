@@ -17,9 +17,26 @@ data class ChapterPages(val pages: List<PageImage>, val servedBy: String? = null
  */
 internal object ChapterMirror {
 
+    private val PARTICLES = mapOf("wo" to "o", "ha" to "wa", "he" to "e")
+
+    /**
+     * [normalizeTitle] that also irons out the usual ways of writing the same Japanese in Latin
+     * letters: the particles を/は/へ as "wo/ha/he" or "o/wa/e", and long vowels as "ou/oo/ō" or
+     * "o". Sources disagree on these ("Sono Bisque Doll wa Koi wo Suru" vs "... Koi o Suru"), and
+     * the strict match then found no source for the title at all.
+     */
+    fun matchKey(title: String): String {
+        val words = title.lowercase()
+            .replace('ō', 'o').replace('ū', 'u').replace('ā', 'a').replace('ē', 'e').replace('ī', 'i')
+            .split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotEmpty() }
+            .map { PARTICLES[it] ?: it }
+            .map { it.replace("ou", "o").replace("oo", "o").replace("uu", "u") }
+        return normalizeTitle(words.joinToString(" "))
+    }
+
     /** Normalised names the title is known by (main title first). */
     fun titleKeys(manga: Manga): List<String> =
-        (listOf(manga.title) + manga.altTitles).map(::normalizeTitle).filter { it.length >= 3 }.distinct()
+        (listOf(manga.title) + manga.altTitles).map(::matchKey).filter { it.length >= 3 }.distinct()
 
     /** Queries worth sending to another source's search: the title and a couple of Latin-script alternatives. */
     fun queries(manga: Manga): List<String> {
@@ -35,7 +52,7 @@ internal object ChapterMirror {
      * vs "Solo Leveling (Official)" is fine, "... Ragnarok" is not), else 0.
      */
     fun score(candidate: String, keys: List<String>): Int {
-        val c = normalizeTitle(candidate)
+        val c = matchKey(candidate)
         if (c.length < 3) return 0
         var best = 0
         for (k in keys) {
