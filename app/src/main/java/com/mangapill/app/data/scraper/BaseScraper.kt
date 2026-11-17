@@ -139,12 +139,20 @@ abstract class BaseScraper {
                 return body
             } catch (e: HttpFailure) {
                 lastError = e
-                if (e.code in 400..499 && e.code != 429) throw ScraperException(e.message ?: "HTTP ${e.code}", e)
+                if (e.code in 400..499 && e.code != 429) {
+                    com.mangapill.app.data.ErrorReporter.report(
+                        "source", "$sourceName: ${e.message ?: "HTTP ${e.code}"}", e, mapOf("source" to sourceId, "url" to fullUrl, "status" to e.code)
+                    )
+                    throw ScraperException(e.message ?: "HTTP ${e.code}", e)
+                }
             } catch (e: IOException) {
                 lastError = e
             }
             if (attempt < maxRetries) delay(600L * attempt)
         }
+        com.mangapill.app.data.ErrorReporter.report(
+            "source", "$sourceName: ${lastError?.message ?: "request failed"}", lastError, mapOf("source" to sourceId, "url" to fullUrl, "attempts" to maxRetries)
+        )
         throw ScraperException(lastError?.message ?: "Failed to fetch $fullUrl", lastError)
     }
 

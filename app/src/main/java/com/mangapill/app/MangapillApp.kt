@@ -32,6 +32,42 @@ class MangapillApp : Application(), ImageLoaderFactory {
         super.onCreate()
         val version = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull() ?: "?"
         CrashLog.install(filesDir, version)
+        startErrorReporting(version)
+    }
+
+    /** Failures go to the app_errors table (see data/ErrorReporter.kt). */
+    private fun startErrorReporting(version: String) {
+        val sp = getSharedPreferences("mangapill_errors", MODE_PRIVATE)
+        val store = object : com.mangapill.app.data.sync.KeyValueStore {
+            override fun get(key: String): String? = sp.getString(key, null)
+            override fun set(key: String, value: String?) {
+                sp.edit().apply { if (value == null) remove(key) else putString(key, value) }.apply()
+            }
+        }
+        com.mangapill.app.data.ErrorReporter.configure(
+            BuildConfig.SUPABASE_URL, BuildConfig.SUPABASE_KEY, version,
+            "Android ${android.os.Build.VERSION.RELEASE} (${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL})",
+            store, { runCatching { cloud.accessToken() }.getOrNull() }, BaseScraper.sharedClient
+        )
+        // The crash handler saved the last crash to a file: send it once (the file stays for Settings).
+        CrashLog.read(filesDir)?.let { report ->
+            val id = report.hashCode().toString()
+            if (store.get("crash_reported") != id) {
+                val lines = report.lines()
+                val trace = lines.drop(3).joinToString("\n")
+                val first = lines.drop(3).firstOrNull { it.isNotBlank() }?.trim() ?: "Crash"
+                com.mangapill.app.data.ErrorReporter.report(
+                    "crash", first, NativeCrash(first, trace),
+                    mapOf("device" to lines.getOrNull(0), "when" to lines.getOrNull(1))
+                )
+                store.set("crash_reported", id)
+            }
+        }
+    }
+
+    /** A crash read back from the saved report: carries its original stack trace. */
+    private class NativeCrash(message: String, private val trace: String) : Throwable(message) {
+        override fun printStackTrace(s: java.io.PrintWriter) { s.print(trace) }
     }
 
     /**
@@ -53,6 +89,16 @@ class MangapillApp : Application(), ImageLoaderFactory {
             // Big disk cache: this is what makes prefetched chapters readable offline.
             .diskCache { DiskCache.Builder().directory(cacheDir.resolve("image_cache")).maxSizeBytes(512L * 1024 * 1024).build() }
             .crossfade(true)
+            // Covers and pages that fail to load (host, reason) go to the error reports.
+            .eventListener(object : coil.EventListener {
+                override fun onError(request: coil.request.ImageRequest, result: coil.request.ErrorResult) {
+                    val data = request.data.toString()
+                    if (!data.startsWith("http")) return
+                    val host = runCatching { java.net.URI(data).host }.getOrNull() ?: "?"
+                    val reason = result.throwable.message ?: result.throwable.javaClass.simpleName
+                    com.mangapill.app.data.ErrorReporter.report("image", "Image failed from $host: $reason", result.throwable, mapOf("host" to host))
+                }
+            })
             .respectCacheHeaders(false)
             .build()
     }

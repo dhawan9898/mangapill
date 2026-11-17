@@ -294,6 +294,7 @@ fun SettingsScreen(repository: MangaRepository) {
                                             }
                                         } catch (e: Exception) {
                                             updateStatus = "Update check failed: ${e.message ?: "Network error"}"
+                                            com.mangapill.app.data.ErrorReporter.report("update", "Update check failed: ${e.message}", e)
                                         } finally {
                                             updateChecking = false
                                         }
@@ -369,6 +370,7 @@ fun SettingsScreen(repository: MangaRepository) {
                                             }
                                             if (res.isFailure) {
                                                 updateStatus = "Update failed: ${res.exceptionOrNull()?.message ?: "Error"}"
+                                                com.mangapill.app.data.ErrorReporter.report("update", "Update failed: ${res.exceptionOrNull()?.message}", res.exceptionOrNull())
                                             } else {
                                                 updateStatus = "APK downloaded. Launching package installer..."
                                             }

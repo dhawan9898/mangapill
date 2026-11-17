@@ -161,6 +161,11 @@ class MangaRepository(private val db: AppDatabase, val prefs: AppPrefs, val down
                         cooldown.remove(source.sourceId)
                     }.onFailure {
                         failures += "${source.sourceName}: ${com.mangapill.app.data.ErrorText.describe(it)}"
+                        // Failed requests were reported where they failed; this catches the rest
+                        // (pages that no longer parse, sources that time out).
+                        if (it !is ScraperException) {
+                            com.mangapill.app.data.ErrorReporter.report("source", "${source.sourceName}: ${it.message ?: it.javaClass.simpleName}", it, mapOf("source" to source.sourceId))
+                        }
                         if (!singleSource) cooldown[source.sourceId] = System.currentTimeMillis() + COOLDOWN_MS
                     }
                     val merged = interleave(healthy.mapNotNull { answered[it.sourceId] })
@@ -351,13 +356,18 @@ class MangaRepository(private val db: AppDatabase, val prefs: AppPrefs, val down
         }
         mirrorPages(sourceId, mangaId, chapterNumber)?.let { return it }
         val name = SourceRegistry.name(sourceId)
-        throw when {
+        val failure = when {
             own != null && !own.hostsPages -> ScraperException(
                 "$name doesn't host chapter pages, and none of the other sources has chapter " +
                     "${formatNumber(chapterNumber)} of this title yet."
             )
             else -> ownError ?: ScraperException("$name has no pages for this chapter")
         }
+        com.mangapill.app.data.ErrorReporter.report(
+            "source", "Chapter could not be opened: ${failure.message}", failure,
+            mapOf("source" to sourceId, "manga" to mangaId, "chapter" to chapterNumber)
+        )
+        throw failure
     }
 
     private suspend fun mirrorPages(sourceId: String, mangaId: String, number: Float): ChapterPages? {

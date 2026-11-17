@@ -76,6 +76,9 @@ class CloudSync(
     )
     val status: StateFlow<CloudStatus> = _status
 
+    /** The signed-in user's token while it is valid (error reports carry the account); else null. */
+    fun accessToken(): String? = session?.takeIf { it.expiresAt - System.currentTimeMillis() > 30_000 }?.accessToken
+
     // ---- HTTP ---------------------------------------------------------------------------------
 
     private suspend fun request(
@@ -194,6 +197,7 @@ class CloudSync(
                 throw e
             } catch (e: Exception) {
                 _status.update { it.copy(error = e.message ?: "Sync failed") }
+                com.mangapill.app.data.ErrorReporter.report("sync", e.message ?: "Sync failed", e)
             } finally {
                 _status.update { it.copy(syncing = false) }
             }
@@ -222,7 +226,16 @@ class CloudSync(
     /** Creates the account. True: a confirmation email was sent; sign in after opening it. */
     suspend fun signUp(email: String, password: String): Boolean {
         val body = JSONObject().put("email", email.trim()).put("password", password)
-        if (adopt(request("/auth/v1/signup", "POST", body)) == null) return true
+        val response = request("/auth/v1/signup", "POST", body)
+        // For an email that already has a confirmed account Supabase answers like a new sign-up but
+        // sends no email (so nobody can probe which addresses are registered); the only sign is a
+        // user without identities. Waiting for a code then never ends: say what to do instead.
+        val json = runCatching { JSONObject(response) }.getOrNull()
+        val identities = json?.optJSONObject("user")?.optJSONArray("identities") ?: json?.optJSONArray("identities")
+        if (identities != null && identities.length() == 0) {
+            throw CloudException("This email already has an account. Sign in with its password instead.")
+        }
+        if (adopt(response) == null) return true
         syncNow()
         return false
     }

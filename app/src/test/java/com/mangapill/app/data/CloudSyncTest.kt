@@ -76,6 +76,10 @@ class CloudSyncTest {
                 path.startsWith("/auth/v1/token") ->
                     if (body.contains("\"wrong\"")) answer(400, """{"msg":"Invalid login credentials"}""")
                     else answer(200, """{"access_token":"tok","refresh_token":"ref","expires_in":3600,"user":{"id":"u1","email":"a@b.c"}}""")
+                path.startsWith("/auth/v1/signup") ->
+                    // Supabase: an already confirmed email gets an obfuscated user without identities and no email.
+                    if (body.contains("taken@b.c")) answer(200, """{"id":"fake","email":"taken@b.c","identities":[]}""")
+                    else answer(200, """{"id":"new","email":"new@b.c","identities":[{"provider":"email"}]}""")
                 path.startsWith("/rest/v1/user_data") && request.method == "GET" ->
                     answer(200, JSONArray(rows.map { (k, v) -> JSONObject().put("kind", k).put("data", v) }).toString())
                 path.startsWith("/rest/v1/user_data") -> {
@@ -121,6 +125,18 @@ class CloudSyncTest {
         same("[]", CloudMerge.canonical(tablet.bookmarks))
         assertNull(phone.sync.status.value.error)
         assertEquals("a@b.c", phone.sync.status.value.email)
+    }
+
+    @Test fun createAccountForATakenEmailSaysSoInsteadOfWaitingForACode() = runBlocking {
+        val phone = Device(FakeServer(), arr("[]"), arr("[]"), mapOf("history" to history, "bookmarks" to list))
+        try {
+            phone.sync.signUp("taken@b.c", "secret1")
+            fail("an existing account should be reported")
+        } catch (e: CloudException) {
+            assertTrue(e.message!!.contains("already has an account"))
+        }
+        assertTrue("a new email waits for its confirmation", phone.sync.signUp("new@b.c", "secret1"))
+        assertNull(phone.sync.status.value.email)
     }
 
     @Test fun aWrongPasswordIsReportedAndNothingIsSynced() = runBlocking {

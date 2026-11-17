@@ -119,6 +119,10 @@ class ChapterDownloads(private val root: File, private val client: OkHttpClient 
             } catch (e: Exception) {
                 dir.deleteRecursively()
                 setState(key, DownloadState.Failed(e.message ?: "Download failed"))
+                com.mangapill.app.data.ErrorReporter.report(
+                    "download", "Chapter download failed: ${e.message ?: e.javaClass.simpleName}", e,
+                    mapOf("source" to sourceId, "manga" to mangaId, "chapter" to chapter.chapterNumber)
+                )
             }
         }
     }
