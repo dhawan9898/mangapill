@@ -477,7 +477,6 @@ private const val MAX_STRIP_HEIGHT_PX = 12_000
 private fun pageRequest(context: Context, page: PageImage, attempt: Int = 0, maxWidthPx: Int = 0): ImageRequest =
     ImageRequest.Builder(context)
         .data(page.imageUrl)
-        .allowRgb565(true)
         .apply {
             if (maxWidthPx > 0) {
                 size(maxWidthPx, MAX_STRIP_HEIGHT_PX)

@@ -26,6 +26,13 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun bookmarkDao(): BookmarkDao
 
     companion object {
+        /**
+         * One step per version change, in order (1 -> 2, 2 -> 3, ...). Without the step for a new
+         * version the app cannot open its database after the update; MigrationCoverageTest fails
+         * the build before that can ship.
+         */
+        val MIGRATIONS: Array<androidx.room.migration.Migration> = arrayOf()
+
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
@@ -36,6 +43,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "mangapill_db"
                 )
+                    .addMigrations(*MIGRATIONS)
                     .fallbackToDestructiveMigrationOnDowngrade()
                     .build()
                 INSTANCE = instance

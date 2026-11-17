@@ -146,13 +146,14 @@ object AppUpdateService {
             }
 
             val expected = if (expectedSize != null && expectedSize > 0) expectedSize else totalBytes
-            if (expected > 0 && apkFile.length() < expected) {
+            val received = apkFile.length()
+            if (expected > 0 && received < expected) {
                 apkFile.delete()
-                throw IOException("Downloaded APK size (${apkFile.length()} bytes) does not match expected size ($expected bytes). Truncated download.")
+                throw IOException("The download stopped early ($received of $expected bytes).")
             }
-            if (apkFile.length() < 1_000_000L) {
+            if (received < 1_000_000L) {
                 apkFile.delete()
-                throw IOException("Downloaded APK is too small (${apkFile.length()} bytes) to be valid.")
+                throw IOException("The downloaded file is too small ($received bytes) to be the app.")
             }
 
             withContext(Dispatchers.Main) {

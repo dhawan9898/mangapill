@@ -56,12 +56,12 @@ class MainActivity : ComponentActivity() {
                 // Lives above the NavHost so query, filters and scroll position survive navigation.
                 val homeState = remember { HomeState(repository, scope) }
 
-                val openManga: (Manga) -> Unit = { m -> navController.navigate(Routes.manga(m.sourceId, m.id)) }
+                val openManga: (Manga) -> Unit = { m -> navController.navigateOnce(Routes.manga(m.sourceId, m.id)) }
                 val readChapter: (Manga, Chapter) -> Unit = { m, ch ->
-                    navController.navigate(Routes.reader(m.sourceId, m.id, ch.id, ch.chapterNumber))
+                    navController.navigateOnce(Routes.reader(m.sourceId, m.id, ch.id, ch.chapterNumber))
                 }
                 val continueReading: (HistoryEntry) -> Unit = { e ->
-                    navController.navigate(Routes.reader(e.manga.sourceId, e.manga.id, e.chapterId, e.chapterNumber))
+                    navController.navigateOnce(Routes.reader(e.manga.sourceId, e.manga.id, e.chapterId, e.chapterNumber))
                 }
 
                 AdaptiveAppScaffold(navController = navController) {
@@ -111,7 +111,7 @@ class MainActivity : ComponentActivity() {
                                 repository = repository,
                                 onBack = { navController.popBackStack() },
                                 onChapterSelect = { ch ->
-                                    navController.navigate(Routes.reader(src, id, ch.id, ch.chapterNumber))
+                                    navController.navigateOnce(Routes.reader(src, id, ch.id, ch.chapterNumber))
                                 }
                             )
                         }
@@ -156,8 +156,18 @@ class MainActivity : ComponentActivity() {
     /** Prev/next inside the reader replaces the current reader entry so Back returns to the manga page. */
     private fun openChapterReplacing(nav: NavHostController, src: String, manga: String, chapter: Chapter) {
         val currentId = nav.currentDestination?.id
-        nav.navigate(Routes.reader(src, manga, chapter.id, chapter.chapterNumber)) {
+        nav.navigateOnce(Routes.reader(src, manga, chapter.id, chapter.chapterNumber)) {
             if (currentId != null) popUpTo(currentId) { inclusive = true }
         }
     }
+}
+
+/**
+ * Navigates only while the current screen is fully on screen. A second tap that lands during the
+ * transition (a quick double tap on a chapter, a cover or "Next") would otherwise open the
+ * destination twice.
+ */
+private fun NavHostController.navigateOnce(route: String, builder: androidx.navigation.NavOptionsBuilder.() -> Unit = {}) {
+    val state = currentBackStackEntry?.lifecycle?.currentState
+    if (state == null || state == androidx.lifecycle.Lifecycle.State.RESUMED) navigate(route, builder)
 }

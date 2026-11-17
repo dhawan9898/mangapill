@@ -24,5 +24,9 @@ jobs:
       - name: Make Gradle Wrapper Executable
         run: chmod +x gradlew
 
-      - name: Run Scraper Tests
-        run: ./gradlew testDebugUnitTest --stacktrace
+      # Live requests to the real sites (the other unit tests are offline and cannot notice a site
+      # moving). A failure here mails the repository owner; the job summary says which source broke.
+      - name: Check every default source
+        env:
+          LIVE_HEALTH: '1'
+        run: ./gradlew testDebugUnitTest --tests '*LiveHealthTest*' --stacktrace
