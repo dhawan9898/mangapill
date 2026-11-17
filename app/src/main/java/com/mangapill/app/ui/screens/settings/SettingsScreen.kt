@@ -21,6 +21,7 @@ import androidx.compose.material.icons.outlined.BookmarkRemove
 import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.CloudDownload
 import androidx.compose.material.icons.outlined.DeleteSweep
+import androidx.compose.material.icons.outlined.Gavel
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.LightMode
@@ -71,7 +72,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** Settings, grouped like AniStream's: Appearance, Reader, OPDS servers, Data and About. */
+/** Settings, laid out like AniStream's and CineStream's: Appearance, Reader, Sources, Downloads, Data, About (with updates). */
 @OptIn(coil.annotation.ExperimentalCoilApi::class)
 @Composable
 fun SettingsScreen(repository: MangaRepository) {
@@ -182,11 +183,33 @@ fun SettingsScreen(repository: MangaRepository) {
                     keepScreenOn,
                     prefs::setKeepScreenOn
                 )
+                CardDivider()
+                ActionRow(
+                    Icons.Outlined.AutoStories,
+                    "Reading tips",
+                    "Double-tap or pinch to zoom. Long-press a cover for a quick look and its chapters.",
+                    onClick = null
+                )
             }
 
             Spacer(Modifier.height(26.dp))
-            SectionLabel("OPDS servers")
+            SectionLabel("Sources")
             OpdsServersCard(repository)
+
+            if (downloads != null) {
+                Spacer(Modifier.height(26.dp))
+                SectionLabel("Downloads")
+                SettingsCard {
+                    ActionRow(
+                        Icons.Outlined.CloudDownload,
+                        "Remove downloaded chapters",
+                        "Frees the space used by chapters saved for offline reading. Single chapters are removed from a title's page.",
+                        onClick = if ((downloadBytes ?: 0L) == 0L) null else ({ confirm = Confirm.DOWNLOADS }),
+                        danger = (downloadBytes ?: 0L) > 0L,
+                        trailing = downloadBytes?.takeIf { it > 0L }?.let { formatBytes(it) }
+                    )
+                }
+            }
 
             Spacer(Modifier.height(26.dp))
             SectionLabel("Data")
@@ -236,17 +259,6 @@ fun SettingsScreen(repository: MangaRepository) {
                     },
                     trailing = cacheBytes?.let { formatBytes(it) }
                 )
-                if (downloads != null) {
-                    CardDivider()
-                    ActionRow(
-                        Icons.Outlined.CloudDownload,
-                        "Remove downloaded chapters",
-                        "Frees the space used by chapters saved for offline reading. Single chapters are removed from a title's page.",
-                        onClick = if ((downloadBytes ?: 0L) == 0L) null else ({ confirm = Confirm.DOWNLOADS }),
-                        danger = (downloadBytes ?: 0L) > 0L,
-                        trailing = downloadBytes?.takeIf { it > 0L }?.let { formatBytes(it) }
-                    )
-                }
                 crashReport?.let { report ->
                     CardDivider()
                     ActionRow(
@@ -264,149 +276,104 @@ fun SettingsScreen(repository: MangaRepository) {
             }
 
             Spacer(Modifier.height(26.dp))
-            SectionLabel("App Updates")
+            SectionLabel("About")
             SettingsCard {
-                Column(Modifier.padding(16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Mangapill", color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                            Text("Installed: v$version", color = TextSecondary, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
+                ActionRow(Icons.Outlined.Info, "Mangapill", "Manga, manhwa and manhua in one place.", onClick = null, trailing = "v$version")
+                CardDivider()
+                ActionRow(
+                    Icons.Outlined.Refresh,
+                    "Check for updates",
+                    if (updateChecking) "Checking…" else "Installed: v$version",
+                    onClick = if (updateChecking || updateDownloading) null else ({
+                        scope.launch {
+                            updateChecking = true
+                            updateStatus = null
+                            try {
+                                val info = AppUpdateService.checkForUpdate("dhawan9898/mangapill", version)
+                                updateInfo = info
+                                if (info == null) updateStatus = "Mangapill is up to date."
+                            } catch (e: Exception) {
+                                updateStatus = "Could not check for updates: ${e.message ?: "network error"}"
+                                com.mangapill.app.data.ErrorReporter.report("update", "Update check failed: ${e.message}", e)
+                            } finally {
+                                updateChecking = false
+                            }
                         }
+                    }),
+                    trailing = updateInfo?.let { "v${it.version} available" }
+                )
+                updateInfo?.let { info ->
+                    CardDivider()
+                    Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Version ${info.version}", color = PurpleAccent, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                            if (info.publishedAt != null) {
+                                Text(info.publishedAt.substringBefore("T"), color = TextMuted, fontSize = 11.sp)
+                            }
+                        }
+                        if (info.releaseNotes.isNotBlank()) {
+                            Text(info.releaseNotes, color = TextSecondary, fontSize = 12.sp, lineHeight = 16.sp, modifier = Modifier.padding(vertical = 6.dp))
+                        }
+                        updateProgress?.let { pct ->
+                            LinearProgressIndicator(
+                                progress = { pct },
+                                modifier = Modifier.fillMaxWidth().padding(top = 4.dp).height(4.dp).clip(RoundedCornerShape(2.dp)),
+                                color = PurpleAccent,
+                                trackColor = Color.White.copy(alpha = 0.2f)
+                            )
+                            Text("Downloading: ${(pct * 100).toInt()}%", color = TextMuted, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
+                        }
+                        Spacer(Modifier.height(10.dp))
                         PillButton(
-                            label = if (updateChecking) "Checking..." else "Check for Updates",
+                            label = if (updateDownloading) "Downloading…" else "Download & install",
                             onClick = {
-                                if (!updateChecking && !updateDownloading) {
+                                if (!updateDownloading) {
                                     scope.launch {
-                                        updateChecking = true
-                                        updateStatus = null
-                                        try {
-                                            val info = AppUpdateService.checkForUpdate("dhawan9898/mangapill", version)
-                                            if (info != null) {
-                                                updateInfo = info
-                                                updateStatus = "Update available: v${info.version}"
-                                            } else {
-                                                updateInfo = null
-                                                updateStatus = "Mangapill is up to date."
-                                            }
-                                        } catch (e: Exception) {
-                                            updateStatus = "Update check failed: ${e.message ?: "Network error"}"
-                                            com.mangapill.app.data.ErrorReporter.report("update", "Update check failed: ${e.message}", e)
-                                        } finally {
-                                            updateChecking = false
+                                        updateDownloading = true
+                                        updateProgress = 0f
+                                        val res = AppUpdateService.downloadAndInstallApk(context, info.apkUrl, info.size) { pct ->
+                                            updateProgress = pct
                                         }
+                                        if (res.isFailure) {
+                                            updateStatus = "Update failed: ${res.exceptionOrNull()?.message ?: "error"}"
+                                            com.mangapill.app.data.ErrorReporter.report("update", "Update failed: ${res.exceptionOrNull()?.message}", res.exceptionOrNull())
+                                        } else {
+                                            updateStatus = "Update downloaded. Opening the installer…"
+                                        }
+                                        updateDownloading = false
+                                        updateProgress = null
                                     }
                                 }
                             },
-                            icon = Icons.Outlined.Refresh
+                            icon = Icons.Outlined.CloudDownload,
+                            background = PurpleAccent,
+                            contentColor = Color.White,
+                            modifier = Modifier.fillMaxWidth()
                         )
-                    }
-
-                    if (updateStatus != null) {
-                        Text(
-                            text = updateStatus.orEmpty(),
-                            color = if (updateInfo != null) PurpleAccent else TextSecondary,
-                            fontSize = 12.sp,
-                            modifier = Modifier.padding(top = 8.dp)
-                        )
-                    }
-
-                    if (updateInfo != null) {
-                        val info = updateInfo!!
-                        Spacer(Modifier.height(10.dp))
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(AccentSoft)
-                                .border(1.dp, PurpleAccent, RoundedCornerShape(12.dp))
-                                .padding(12.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text("New Version: v${info.version}", color = PurpleAccent, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                                if (info.publishedAt != null) {
-                                    Text(info.publishedAt.substringBefore("T"), color = TextMuted, fontSize = 11.sp)
-                                }
-                            }
-                            if (info.releaseNotes.isNotBlank()) {
-                                Text(
-                                    info.releaseNotes,
-                                    color = TextSecondary,
-                                    fontSize = 12.sp,
-                                    modifier = Modifier.padding(vertical = 6.dp)
-                                )
-                            }
-                            if (updateProgress != null) {
-                                LinearProgressIndicator(
-                                    progress = { updateProgress ?: 0f },
-                                    modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
-                                    color = PurpleAccent,
-                                    trackColor = Color.White.copy(alpha = 0.2f)
-                                )
-                                Text(
-                                    "Downloading APK: ${((updateProgress ?: 0f) * 100).toInt()}%",
-                                    color = TextMuted,
-                                    fontSize = 11.sp,
-                                    modifier = Modifier.padding(top = 4.dp)
-                                )
-                            }
-                            Spacer(Modifier.height(8.dp))
-                            PillButton(
-                                label = if (updateDownloading) "Downloading & Installing..." else "Download & Install Update",
-                                onClick = {
-                                    if (!updateDownloading) {
-                                        scope.launch {
-                                            updateDownloading = true
-                                            updateProgress = 0f
-                                            val res = AppUpdateService.downloadAndInstallApk(context, info.apkUrl, info.size) { pct ->
-                                                updateProgress = pct
-                                            }
-                                            if (res.isFailure) {
-                                                updateStatus = "Update failed: ${res.exceptionOrNull()?.message ?: "Error"}"
-                                                com.mangapill.app.data.ErrorReporter.report("update", "Update failed: ${res.exceptionOrNull()?.message}", res.exceptionOrNull())
-                                            } else {
-                                                updateStatus = "APK downloaded. Launching package installer..."
-                                            }
-                                            updateDownloading = false
-                                        }
-                                    }
-                                },
-                                icon = Icons.Outlined.CloudDownload,
-                                background = PurpleAccent,
-                                contentColor = Color.White,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        }
                     }
                 }
-            }
-
-            Spacer(Modifier.height(26.dp))
-            SectionLabel("About")
-            SettingsCard {
-                ActionRow(Icons.Outlined.Info, "Mangapill", "Manga, manhwa and manhua from several sources at once.", onClick = null, trailing = "v$version")
+                updateStatus?.let { text ->
+                    CardDivider()
+                    Text(
+                        text,
+                        color = if (text.startsWith("Update downloaded")) PurpleAccent else TextSecondary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)
+                    )
+                }
                 CardDivider()
                 ActionRow(
-                    Icons.Outlined.AutoStories,
-                    "Reading tips",
-                    "Double-tap or pinch to zoom. Long-press a cover for a quick look and its chapters.",
+                    Icons.Outlined.Gavel,
+                    "Disclaimer",
+                    "Mangapill does not host any content. Everything is fetched from third-party sites.",
                     onClick = null
                 )
             }
-            Text(
-                "Made with the same look as AniStream and CineStream.",
-                color = TextMuted,
-                fontSize = 11.sp,
-                modifier = Modifier.fillMaxWidth().padding(top = 14.dp),
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-            )
         }
     }
 

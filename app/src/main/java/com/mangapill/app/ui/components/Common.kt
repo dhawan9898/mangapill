@@ -141,17 +141,6 @@ fun MangaCover(manga: Manga, modifier: Modifier = Modifier, alpha: Float = 1f) {
 }
 
 @Composable
-fun SourceBadge(name: String, modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier
-            .liquidGlass(RoundedCornerShape(8.dp), 0.08f, base = Color(0x8C000000), overImage = true)
-            .padding(horizontal = 7.dp, vertical = 3.dp)
-    ) {
-        Text(name, color = OnImage, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-    }
-}
-
-@Composable
 fun RatingBadge(rating: Float, modifier: Modifier = Modifier) {
     if (rating <= 0f) return
     Row(

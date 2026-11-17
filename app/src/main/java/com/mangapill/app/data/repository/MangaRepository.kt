@@ -160,7 +160,7 @@ class MangaRepository(private val db: AppDatabase, val prefs: AppPrefs, val down
                         answered[source.sourceId] = it
                         cooldown.remove(source.sourceId)
                     }.onFailure {
-                        failures += "${source.sourceName}: ${com.mangapill.app.data.ErrorText.describe(it)}"
+                        failures += com.mangapill.app.data.ErrorText.describe(it)
                         // Failed requests were reported where they failed; this catches the rest
                         // (pages that no longer parse, sources that time out).
                         if (it !is ScraperException) {
@@ -314,7 +314,7 @@ class MangaRepository(private val db: AppDatabase, val prefs: AppPrefs, val down
     suspend fun getChapterPages(sourceId: String, chapterId: String): List<PageImage> =
         cached("pages:$sourceId:$chapterId", 30 * 60_000L) {
             val pages = scraper(sourceId).getChapterPages(chapterId)
-            if (pages.isEmpty()) throw ScraperException("${SourceRegistry.name(sourceId)} has no pages for this chapter")
+            if (pages.isEmpty()) throw ScraperException("This chapter has no pages")
             pages
         }
 
@@ -355,13 +355,11 @@ class MangaRepository(private val db: AppDatabase, val prefs: AppPrefs, val down
             }
         }
         mirrorPages(sourceId, mangaId, chapterNumber)?.let { return it }
-        val name = SourceRegistry.name(sourceId)
         val failure = when {
             own != null && !own.hostsPages -> ScraperException(
-                "$name doesn't host chapter pages, and none of the other sources has chapter " +
-                    "${formatNumber(chapterNumber)} of this title yet."
+                "Chapter ${formatNumber(chapterNumber)} of this title can't be read here yet."
             )
-            else -> ownError ?: ScraperException("$name has no pages for this chapter")
+            else -> ownError ?: ScraperException("This chapter has no pages")
         }
         com.mangapill.app.data.ErrorReporter.report(
             "source", "Chapter could not be opened: ${failure.message}", failure,

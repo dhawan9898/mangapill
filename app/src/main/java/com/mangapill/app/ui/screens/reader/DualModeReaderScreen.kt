@@ -343,9 +343,6 @@ private fun ReaderContent(
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold
                         )
-                        servedBy?.let {
-                            Text("Pages from $it", color = TextMuted, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-                        }
                     }
                 }
                 Row(

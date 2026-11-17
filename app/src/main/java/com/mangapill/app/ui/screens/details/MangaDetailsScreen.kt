@@ -79,11 +79,9 @@ import com.mangapill.app.ui.components.glass.PrimaryButton
 import com.mangapill.app.ui.components.glass.liquidGlass
 import com.mangapill.app.ui.components.manga.StatusTag
 import com.mangapill.app.ui.components.RatingBadge
-import com.mangapill.app.ui.components.SourceBadge
 import com.mangapill.app.ui.components.StateMessage
 import com.mangapill.app.ui.components.friendlyError
 import com.mangapill.app.ui.components.shimmer
-import com.mangapill.app.ui.components.sourceLabel
 import com.mangapill.app.ui.theme.BlueStatus
 import com.mangapill.app.ui.theme.EmeraldStatus
 import com.mangapill.app.ui.theme.OledBackground
@@ -321,7 +319,7 @@ fun MangaDetailsScreen(
                             StateMessage(
                                 icon = Icons.Default.CloudOff,
                                 title = if (chaptersError != null) "Couldn't load chapters" else "No chapters available",
-                                message = chaptersError ?: "This title has no readable chapters on ${sourceLabel(sourceId)} yet.",
+                                message = chaptersError ?: "This title has no readable chapters yet.",
                                 actionLabel = if (chaptersError != null) "Retry" else null,
                                 onAction = { reloadTick++ }
                             )
@@ -422,7 +420,6 @@ private fun Hero(manga: Manga) {
                     overflow = TextOverflow.Ellipsis
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    SourceBadge(sourceLabel(manga.sourceId))
                     StatusTag(manga.status)
                     RatingBadge(manga.rating)
                 }

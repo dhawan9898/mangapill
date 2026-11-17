@@ -65,7 +65,6 @@ import com.mangapill.app.ui.components.ScreenHeader
 import com.mangapill.app.ui.components.SegmentedControl
 import com.mangapill.app.ui.components.StateMessage
 import com.mangapill.app.ui.components.glass.liquidGlass
-import com.mangapill.app.ui.components.sourceLabel
 import com.mangapill.app.ui.navigation.bottomContentPadding
 import com.mangapill.app.ui.screens.details.formatChapterNumber
 import com.mangapill.app.ui.theme.PurpleAccent
@@ -189,8 +188,7 @@ private fun HistoryList(entries: List<HistoryEntry>, onContinue: (HistoryEntry) 
                         trackColor = PurpleAccent.copy(alpha = 0.25f)
                     )
                     Text(
-                        "${sourceLabel(entry.manga.sourceId)} · " +
-                            DateUtils.getRelativeTimeSpanString(entry.lastReadAt).toString(),
+                        DateUtils.getRelativeTimeSpanString(entry.lastReadAt).toString(),
                         color = TextMuted,
                         fontSize = 11.sp
                     )

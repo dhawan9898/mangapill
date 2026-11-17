@@ -84,17 +84,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mangapill.app.data.model.Genres
 import com.mangapill.app.data.model.Manga
-import com.mangapill.app.data.model.SourceInfo
 import com.mangapill.app.data.repository.HistoryEntry
 import com.mangapill.app.data.repository.MangaRepository
 import com.mangapill.app.ui.components.MangaCover
 import com.mangapill.app.ui.components.MangaPosterCard
 import com.mangapill.app.ui.components.RatingBadge
 import com.mangapill.app.ui.components.SectionHeader
-import com.mangapill.app.ui.components.SourceBadge
 import com.mangapill.app.ui.components.bleed
 import com.mangapill.app.ui.components.shimmer
-import com.mangapill.app.ui.components.sourceLabel
 import com.mangapill.app.ui.components.glass.BrandGradient
 import com.mangapill.app.ui.components.glass.GlassChip
 import com.mangapill.app.ui.components.glass.GlassIconButton
@@ -173,17 +170,6 @@ fun GlassSearchBar(
                 }
             }
         }
-    }
-}
-
-@Composable
-fun SourceChipsRow(sources: List<SourceInfo>, selected: String?, onSelect: (String?) -> Unit) {
-    LazyRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
-    ) {
-        item { GlassChip("All sources", selected == null, { onSelect(null) }) }
-        items(sources, key = { it.id }) { s -> GlassChip(s.name, selected == s.id, { onSelect(s.id) }) }
     }
 }
 
@@ -271,7 +257,7 @@ private fun SuggestionResults(
                 Column(Modifier.weight(1f)) {
                     Text(highlight(m.title, query), color = TextSecondary, fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Text(
-                        listOfNotNull(sourceLabel(m.sourceId), m.rating.takeIf { it > 0f }?.let { "★ %.1f".format(it) }).joinToString(" · "),
+                        listOfNotNull(m.rating.takeIf { it > 0f }?.let { "★ %.1f".format(it) }).joinToString(" · "),
                         color = TextMuted,
                         fontSize = 11.sp
                     )
@@ -387,8 +373,8 @@ fun FilterSheet(state: HomeState, repository: MangaRepository, onDismiss: () -> 
 
             val targets = repository.sourcesFor(state.filters, state.source)
             Text(
-                if (targets.isEmpty()) "None of your enabled sources supports this combination. Enable more sources in Settings or remove a filter."
-                else "Searching " + targets.joinToString { it.sourceName },
+                if (targets.isEmpty()) "No results can match this combination of filters. Remove a filter to search again."
+                else "Searching every source that supports these filters",
                 color = if (targets.isEmpty()) PinkAccent else TextMuted,
                 fontSize = 12.sp
             )

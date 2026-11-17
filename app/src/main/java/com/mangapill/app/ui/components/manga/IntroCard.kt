@@ -57,12 +57,10 @@ import com.mangapill.app.data.model.ReadingHistory
 import com.mangapill.app.data.repository.MangaRepository
 import com.mangapill.app.ui.components.MangaCover
 import com.mangapill.app.ui.components.RatingBadge
-import com.mangapill.app.ui.components.SourceBadge
 import com.mangapill.app.ui.components.glass.GlassIconButton
 import com.mangapill.app.ui.components.glass.PrimaryButton
 import com.mangapill.app.ui.components.glass.liquidGlass
 import com.mangapill.app.ui.components.shimmer
-import com.mangapill.app.ui.components.sourceLabel
 import com.mangapill.app.ui.screens.details.formatChapterNumber
 import com.mangapill.app.ui.screens.details.pickStartChapter
 import com.mangapill.app.ui.theme.BlueStatus
@@ -171,7 +169,6 @@ fun IntroCard(
                     overflow = TextOverflow.Ellipsis
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    SourceBadge(sourceLabel(manga.sourceId))
                     StatusTag(manga.status)
                 }
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {

@@ -73,7 +73,6 @@ import com.mangapill.app.ui.navigation.bottomContentPadding
 import com.mangapill.app.ui.screens.home.FilterSheet
 import com.mangapill.app.ui.screens.home.GlassSearchBar
 import com.mangapill.app.ui.screens.home.HomeState
-import com.mangapill.app.ui.screens.home.SourceChipsRow
 import com.mangapill.app.ui.screens.home.SuggestionsPanel
 import com.mangapill.app.ui.theme.PurpleAccent
 import com.mangapill.app.ui.theme.TextMuted
@@ -93,9 +92,7 @@ fun SearchScreen(
 ) {
     LaunchedEffect(Unit) { state.start() }
 
-    val enabled by repository.prefs.enabledSources.collectAsState()
     val recents by repository.prefs.recentSearches.collectAsState()
-    val sources = remember(enabled) { repository.sources.filter { it.id in enabled } }
     val focusManager = LocalFocusManager.current
     val focusRequester = remember { FocusRequester() }
     var searchFocused by remember { mutableStateOf(false) }
@@ -138,7 +135,6 @@ fun SearchScreen(
             fieldModifier = Modifier.focusRequester(focusRequester),
             modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp)
         )
-        SourceChipsRow(sources, state.source, state::selectSource)
 
         Box(Modifier.fillMaxWidth().weight(1f)) {
             AnimatedContent(
@@ -234,7 +230,7 @@ private fun SearchIdle(
             }
         }
         Column {
-            SectionHeader("Browse by genre", subtitle = "Across all your enabled sources")
+            SectionHeader("Browse by genre", subtitle = "Find something new to read")
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Genres.all.forEach { g -> GlassChip(g.name, false, { onGenre(g.slug) }) }
             }
