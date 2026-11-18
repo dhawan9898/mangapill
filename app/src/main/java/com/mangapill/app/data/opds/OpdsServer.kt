@@ -1,5 +1,6 @@
 package com.mangapill.app.data.opds
 
+import com.mangapill.app.data.SecretBox
 import okhttp3.Credentials
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Interceptor
@@ -25,7 +26,7 @@ data class OpdsServer(
 
     fun toJson(): JSONObject = JSONObject()
         .put("id", id).put("name", name).put("url", url)
-        .put("username", username).put("password", password)
+        .put("username", username).put("password", SecretBox.seal(password))
 
     companion object {
         const val SOURCE_PREFIX = "opds-"
@@ -35,7 +36,7 @@ data class OpdsServer(
             name = o.optString("name"),
             url = o.getString("url"),
             username = o.optString("username"),
-            password = o.optString("password")
+            password = SecretBox.open(o.optString("password"))
         )
 
         fun listToJson(list: List<OpdsServer>): String = JSONArray().apply { list.forEach { put(it.toJson()) } }.toString()
