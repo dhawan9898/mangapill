@@ -7,6 +7,7 @@ import androidx.core.content.FileProvider
 import com.mangapill.app.data.scraper.BaseScraper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Request
 import org.json.JSONObject
 import java.io.File
@@ -85,6 +86,14 @@ object AppUpdateService {
         }
     }
 
+    /** Updates are only ever installed from GitHub releases: https, and a GitHub host. */
+    internal fun isTrustedApkUrl(url: String): Boolean {
+        val parsed = url.toHttpUrlOrNull() ?: return false
+        val host = parsed.host.lowercase()
+        return parsed.isHttps && (host == "github.com" || host.endsWith(".github.com") ||
+            host == "githubusercontent.com" || host.endsWith(".githubusercontent.com"))
+    }
+
     /**
      * Downloads the APK file to app cache and launches the Android Package Installer.
      */
@@ -95,6 +104,7 @@ object AppUpdateService {
         onProgress: (Float) -> Unit
     ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
+            if (!isTrustedApkUrl(apkUrl)) throw IOException("Updates can only be downloaded from GitHub over https.")
             val request = Request.Builder()
                 .url(apkUrl)
                 .header("User-Agent", BaseScraper.DEFAULT_USER_AGENT)
@@ -111,6 +121,11 @@ object AppUpdateService {
                 val code = response.code
                 response.close()
                 throw IOException("Failed to download APK: HTTP $code")
+            }
+            // Redirects are followed by the client: make sure the file really came from GitHub.
+            if (!isTrustedApkUrl(response.request.url.toString())) {
+                response.close()
+                throw IOException("The update link redirected somewhere that is not GitHub. Will not install.")
             }
 
             val body = response.body ?: throw IOException("Empty APK download body")

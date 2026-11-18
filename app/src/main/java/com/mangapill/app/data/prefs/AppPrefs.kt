@@ -15,7 +15,13 @@ class AppPrefs(context: Context) {
 
     // Registered before the enabled set is loaded, so saved OPDS sources are recognised.
     private val _opdsServers = MutableStateFlow(
-        OpdsServer.listFromJson(sp.getString(KEY_OPDS, null)).also { SourceRegistry.setOpdsServers(it) }
+        OpdsServer.listFromJson(sp.getString(KEY_OPDS, null)).also {
+            SourceRegistry.setOpdsServers(it)
+            // Passwords saved by older versions are in clear text: write the list back once so they are encrypted.
+            if (it.any { s -> s.password.isNotEmpty() } && sp.getString(KEY_OPDS, null)?.contains("\"password\":\"enc1:") != true) {
+                sp.edit().putString(KEY_OPDS, OpdsServer.listToJson(it)).apply()
+            }
+        }
     )
     val opdsServers: StateFlow<List<OpdsServer>> = _opdsServers.asStateFlow()
 
